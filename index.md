@@ -1,37 +1,26 @@
-## Welcome to GitHub Pages
+### Hi there 👋
 
-You can use the [editor on GitHub](https://github.com/spamegg1/spamegg1.github.io/edit/main/index.md) to maintain and preview the content for your website in Markdown files.
+<!--
+**spamegg1/spamegg1** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+Here are some ideas to get you started:
 
-### Markdown
+- 🔭 I’m currently working on ...
+- 🌱 I’m currently learning ...
+- 👯 I’m looking to collaborate on ...
+- 🤔 I’m looking for help with ...
+- 💬 Ask me about ...
+- 📫 How to reach me: ...
+- 😄 Pronouns: ...
+- ⚡ Fun fact: ...
+  -->
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+[Collaborator](https://github.com/alexmojaki/futurecoder) to [Futurecoder](https://futurecoder.io)
 
-```markdown
-Syntax highlighted code block
+Member of [![Open Source Society University - Computer Science](https://img.shields.io/badge/OSSU-computer--science-blue.svg)](https://github.com/ossu/computer-science)
 
-# Header 1
-## Header 2
-### Header 3
+I'm a Tutor on OSSU [Discord channel!](https://discord.gg/5pUhfpX) Come and ask me code questions!
 
-- Bulleted
-- List
+I [review](https://github.com/spamegg1/reviews) online courses.
 
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
-```
-
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/spamegg1/spamegg1.github.io/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://docs.github.com/categories/github-pages-basics/) or [contact support](https://support.github.com/contact) and we’ll help you sort it out.
+[![spamegg's GitHub stats](https://github-readme-stats.vercel.app/api?username=spamegg1&theme=synthwave)](https://github.com/anuraghazra/github-readme-stats)
