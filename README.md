@@ -27,3 +27,8 @@
 ![spamegg's GitHub stats](https://github-readme-stats-spamegg1.vercel.app/api?username=spamegg1&theme=synthwave)
 
 ![Top Langs](https://github-readme-stats-spamegg1.vercel.app/api/top-langs/?username=spamegg1&count_private=true&layout=compact&theme=synthwave)
+
+<div align="center">
+    <img src="https://raw.githubusercontent.com/[YourGitHub]/[YourGitHub]/output/github-contribution-grid-snake.svg" alt="GitHub Contribution Grid Snake Animation"/>
+</div>
+
