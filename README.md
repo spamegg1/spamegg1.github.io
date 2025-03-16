@@ -68,5 +68,4 @@ Useful byproducts continue:
 
 - Started learning [Lean](https://lean-lang.org) for coding proofs.
 
-***Year 3 (2025):*** I started work on a project for [an AI company](https://abaka.ai)
-on formalizing mathematics, so progress will be slower.
+***Year 3 (2025):*** More formalizing mathematics, so progress will be slower.
