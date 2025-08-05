@@ -18,7 +18,7 @@
 
 🔭 I’m currently working on: my own combined Math + CS curriculum, focusing on deep connections and foundations, ideas, history, abstract thinking and problem solving.
 
-🌱 I’m currently learning: lots of Scala libraries, especially [Doodle](https://github.com/creativescala/doodle) and [Scala Native](https://scala-native.org/en/stable/).
+🌱 I’m currently learning: formalizing mathematics in [Lean4](https://lean-lang.org)
 
 🤔 I’m looking for: suggestions with interesting and creative ideas to teach logic gates, ALU / CPU, assembly; something simpler than [Nand2Tetris](https://www.nand2tetris.org/).
 
@@ -63,3 +63,16 @@ Useful byproducts continue:
 - and progress on [Abstract thinking](https://github.com/spamegg1/abstract-thinking)
 
 - passing unbearable hot summer days by solving [Advent of Code](https://adventofcode.com/) and thinking about how to teach the subtleties of [problem solving](https://www.youtube.com/watch?v=6DxTQiJuAoc).
+
+- *October 2024:* work started on [Tarski's world](https://github.com/spamegg1/tarski/). Turns out parsing first-order logic is hard! 😆
+
+- Started learning [Lean](https://lean-lang.org) for coding proofs.
+
+***Year 3 (2025):***
+
+- *Jan - Mar 2025:* More formalizing mathematics in Lean4, so progress will be slower.
+- *April 2025*:
+  - Done with Lean for now. (It's highly unsuitable for the curriculum!)
+  - Teaching GPU programming is difficult; so I started contributing to a [GPU library](https://github.com/ComputeNode/cyfra/).
+  - I want to make a beginner-friendly GPU course based on it.
+- *May - August 2025:* I will be doing [Google Summer of Code](https://summerofcode.withgoogle.com/) to contribute to the [GPU library](https://github.com/ComputeNode/cyfra/).
