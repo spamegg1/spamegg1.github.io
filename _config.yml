@@ -1,3 +1,4 @@
 theme: jekyll-theme-dinky
 
-gems: ["emoji_for_jekyll"]
+plugins:
+  - jemoji
