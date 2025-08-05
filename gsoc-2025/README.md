@@ -152,13 +152,70 @@ for writing GPU programs.
 #### Further work
 
 I would like to implement more of fs2's streaming API on Cyfra, adding more methods.
+This can be tricky. For example, implementing a `.filter` method requires doing a scan and
+[stream compaction](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda).
 
 We would like to generalize Cyfra pipes to any sort of data, not just fs2 `Stream`s.
 That way Cyfra can be used with many types of streaming data.
 
 ## Cyfra Interpreter
 
-TODO: stay tuned!
+I was ahead of schedule on my project;
+also I had to wait a bit for some big changes to Cyfra's runtime API.
+So I worked on a useful side project:
+[making an interpreter](https://nrinaudo.github.io/articles/pl.html).
+
+The interpreter was a much smoother project to work on.
+It evolved gradually in stages:
+
+- Simulating [expressions](https://github.com/ComputeNode/cyfra/blob/main/cyfra-dsl/src/main/scala/io/computenode/cyfra/dsl/Expression.scala):
+the baseline of Cyfra's DSL
+- Interpreting [GIO](https://github.com/ComputeNode/cyfra/blob/dev/cyfra-dsl/src/main/scala/io/computenode/cyfra/dsl/gio/GIO.scala):
+Cyfra's [monad](https://en.wikipedia.org/wiki/Monad_(functional_programming))
+type for GPU compute (which builds on expressions)
+- Scaling the simulator to handle multiple
+[invocations](https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_InvocationID.xhtml)
+in parallel
+- Propagating these changes to the interpreter (which builds on the simulator)
+- Profiling reads in the simulator
+- Profiling writes in the interpreter
+- Profiling whether reads/writes "coalesce" (use contiguous buffer addresses)
+- Profiling branching paths in if/else expressions, measuring idle periods.
+
+### Simulating expressions, just one at a time
+
+TODO
+
+### Interpreting a GIO, one at a time
+
+TODO
+
+### Simulating invocations in parallel
+
+TODO
+
+### Interpreting invocations in parallel
+
+TODO
+
+### Keeping track of reads and writes, and coalescence
+
+TODO
+
+### Profiling branches
+
+TODO
+
+### Future work
+
+There are some missing `Expression` types, such as external function calls,
+`GSeq`s, and so on, which are not simulated properly yet.
+
+The interpreter treats invocations as linear; in the future it should probably
+accomodate concepts such as
+[workgroups and dimensions](https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_WorkGroupSize.xhtml).
+
+I'd like to generalize the interpreter to `GProgram`s that build on and go beyond `GIO`s.
 
 ## Impressions and reflections
 
