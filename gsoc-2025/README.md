@@ -1,3 +1,3 @@
-# Google Summer of Code 2025 Project
+# GSoC 2025
 
 Hi there! :wave:
