@@ -1,4 +1,6 @@
-# Hi there 👋
+# Home
+
+## Hi there 👋
 
 ![TuxCoding](tux.gif)
 
