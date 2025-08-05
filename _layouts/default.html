@@ -21,7 +21,7 @@
       <ul>
         {% for page in site.pages %}
         {% if page.title != blank %}
-        <li><a href="{{ page.url }}">{{ page.title }}</a></li>
+        <li><a class="header" href="{{ page.url }}">{{ page.title }}</a></li>
         {% endif %}
         {% endfor %}
       </ul>
