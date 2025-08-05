@@ -18,6 +18,12 @@
 <body>
   <div class="wrapper">
     <header>
+      <ul>
+        {% for page in site.pages %}
+        <li><a href="{{ page.filename }}">{{ page.title }} </a></li>
+        {% endfor %}
+      </ul>
+
       <h1 class="header">{{ site.title | default: site.github.repository_name }}</h1>
       <p class="header">{{ site.description | default: site.github.project_tagline }}</p>
 
@@ -39,10 +45,6 @@
         <li><a class="buttons github" href="{{ site.github.owner_url }}">GitHub Profile</a></li>
       </ul>
       {% endif %}
-
-      {% for page in site.pages %}
-      <a href="{{ page.filename }}">{{ page.title }} </a>
-      {% endfor %}
     </header>
 
     <section>
