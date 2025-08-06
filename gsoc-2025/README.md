@@ -1,5 +1,26 @@
 # GSoC 2025
 
+- [GSoC 2025](#gsoc-2025)
+  - [Goals](#goals)
+    - [Project goals](#project-goals)
+    - [Long term personal goals for the future](#long-term-personal-goals-for-the-future)
+  - [Learning the codebase, making first contributions](#learning-the-codebase-making-first-contributions)
+  - [Fs2 integration](#fs2-integration)
+    - [Challenges](#challenges)
+    - [A "type bridge"](#a-type-bridge)
+      - [Further work on type bridges](#further-work-on-type-bridges)
+    - [fs2 mapping through Cyfra](#fs2-mapping-through-cyfra)
+      - [Further work](#further-work)
+  - [Cyfra Interpreter](#cyfra-interpreter)
+    - [Simulating expressions, just one at a time](#simulating-expressions-just-one-at-a-time)
+    - [Interpreting a GIO, one at a time](#interpreting-a-gio-one-at-a-time)
+    - [Simulating invocations in parallel](#simulating-invocations-in-parallel)
+    - [Interpreting invocations in parallel](#interpreting-invocations-in-parallel)
+    - [Keeping track of reads and writes, and coalescence](#keeping-track-of-reads-and-writes-and-coalescence)
+    - [Profiling branches](#profiling-branches)
+    - [Future work](#future-work)
+  - [Impressions and reflections](#impressions-and-reflections)
+
 I participated in 2025's Google Summer of Code,
 to contribute to [Cyfra](https://github.com/ComputeNode/cyfra/).
 
