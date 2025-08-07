@@ -13,6 +13,7 @@
       - [Further work](#further-work)
   - [Cyfra Interpreter](#cyfra-interpreter)
     - [Simulating expressions, just one at a time](#simulating-expressions-just-one-at-a-time)
+      - [Overcoming stack overflow](#overcoming-stack-overflow)
     - [Interpreting a GIO, one at a time](#interpreting-a-gio-one-at-a-time)
     - [Simulating invocations in parallel](#simulating-invocations-in-parallel)
     - [Interpreting invocations in parallel](#interpreting-invocations-in-parallel)
@@ -205,7 +206,109 @@ in parallel
 
 ### Simulating expressions, just one at a time
 
-TODO
+Cyfra's DSL has *a lot* of `Expression` types!
+
+```scala
+def simOne(e: Expression[?]) = e match
+  case CurrentElem(tid: Int)        => ???
+  case AggregateElem(tid: Int)      => ???
+  case Negate(a)                    => ???
+  case Sum(a, b)                    => ???
+  case Diff(a, b)                   => ???
+  case Mul(a, b)                    => ???
+  case Div(a, b)                    => ???
+  case Mod(a, b)                    => ???
+  case ScalarProd(a, b)             => ???
+  case DotProd(a, b)                => ???
+  case BitwiseAnd(a, b)             => ???
+  case BitwiseOr(a, b)              => ???
+  case BitwiseXor(a, b)             => ???
+  case BitwiseNot(a)                => ???
+  case ShiftLeft(a, by)             => ???
+  case ShiftRight(a, by)            => ???
+  case GreaterThan(a, b)            => ???
+  case LessThan(a, b)               => ???
+  case GreaterThanEqual(a, b)       => ???
+  case LessThanEqual(a, b)          => ???
+  case Equal(a, b)                  => ???
+  case And(a, b)                    => ???
+  case Or(a, b)                     => ???
+  case Not(a)                       => ???
+  case ExtractScalar(a, i)          => ???
+  case ToFloat32(a)                 => ???
+  case ToInt32(a)                   => ???
+  case ToUInt32(a)                  => ???
+  case ConstFloat32(value)          => ???
+  case ConstInt32(value)            => ???
+  case ConstUInt32(value)           => ???
+  case ConstGB(value)               => ???
+  case ComposeVec2(a, b)            => ???
+  case ComposeVec3(a, b, c)         => ???
+  case ComposeVec4(a, b, c, d)      => ???
+  case value: FloatType             => ???
+  case value: IntType               => ???
+  case value: UIntType              => ???
+  case GBoolean(source)             => ???
+  case Vec2(tree)                   => ???
+  case Vec3(tree)                   => ???
+  case Vec4(tree)                   => ???
+  case ExtFunctionCall(fn, args)    => ???
+  case FunctionCall(fn, body, args) => ???
+  case InvocationId                 => ???
+  case Pass(value)                  => ???
+  case Dynamic(source)              => ???
+  case e: GArrayElem[?]             => ???
+  case e: FoldSeq[?, ?]             => ???
+  case e: ComposeStruct[?]          => ???
+  case e: GetField[?, ?]            => ???
+```
+
+At the end, most of them turn into `Float | Int | Boolean` or
+`Vector[Float] | Vector[Int] | Vector[Boolean]`. Let's call this type `Result`.
+
+The naive approach is to simply follow the recursive structure of the DSL. For example
+
+```scala
+case Sum(a, b) => simOne(a) + simOne(b)
+```
+
+This runs into the obvious problem of stack overflow due to recursion.
+
+#### Overcoming stack overflow
+
+The typical way to overcome stack overflow in cases like this is to rewrite it
+using [tail recursion](https://en.wikipedia.org/wiki/Tail_call).
+This can be difficult to do when the traversed structure isn't a simple list.
+In our case we have an [AST](https://en.wikipedia.org/wiki/Abstract_syntax_tree).
+
+One common approach is to turn the tree into a list, so that it is
+[topologically sorted](https://en.wikipedia.org/wiki/Topological_sorting).
+This way, when an expression appears somewhere in the list, every sub-expression that
+it needs will already have been calculated, because they are earlier in the list:
+
+```scala
+List(..., a, b, ..., Sum(a, b), ...) // a,b are guaranteed to appear earlier than the Sum
+```
+
+So we can evaluate the list in order, cache earlier results in a map, then look them up.
+Since it's a simple list, it can be made tail-recursive very easily!
+
+```scala
+@annotation.tailrec
+def simOne(exprs: List[Expression[?]], cache: Map[TreeId, Result]): Result
+```
+
+But what about the topological sort? It's a fairly complex algorithm.
+Thankfully, I did not have to implement that from scratch!
+Cyfra's [compiler](https://github.com/ComputeNode/cyfra/tree/main/cyfra-compiler)
+already has a topological sorter called `buildBlock`:
+
+```scala
+def buildBlock(tree: Expression[?], providedExprIds: Set[Int] = Set.empty): List[Expression[?]]
+```
+
+It consumes an `Expression` and returns a topo-sorted list of its entire AST.
+Normally it is used to compile Cyfra to SPIR-V, but now it can pull double duty!
 
 ### Interpreting a GIO, one at a time
 
