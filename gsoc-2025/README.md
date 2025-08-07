@@ -28,6 +28,11 @@ to contribute to [Cyfra](https://github.com/ComputeNode/cyfra/).
 Cyfra is a DSL (in Scala 3) and runtime to do general programming on the GPU.
 It compiles its DSL to SPIR-V assembly and runs it via Vulkan runtime on GPUs.
 
+My contributions can be found at:
+
+- [Fs2 interop](https://github.com/ComputeNode/cyfra/pull/63)
+- [Cyfra interpreter](https://github.com/ComputeNode/cyfra/pull/62).
+
 ## Goals
 
 ### Project goals
@@ -182,25 +187,22 @@ That way Cyfra can be used with many types of streaming data.
 
 ## Cyfra Interpreter
 
-I was ahead of schedule on my project;
+I was ahead of schedule on my fs2 project;
 also I had to wait a bit for some big changes to Cyfra's runtime API.
-So I worked on a useful side project:
+So I worked on another project:
 [making an interpreter](https://nrinaudo.github.io/articles/pl.html).
 
-The interpreter was a much smoother project to work on.
 It evolved gradually in stages:
 
-- Simulating [expressions](https://github.com/ComputeNode/cyfra/blob/main/cyfra-dsl/src/main/scala/io/computenode/cyfra/dsl/Expression.scala):
-the baseline of Cyfra's DSL
-- Interpreting [GIO](https://github.com/ComputeNode/cyfra/blob/dev/cyfra-dsl/src/main/scala/io/computenode/cyfra/dsl/gio/GIO.scala):
+- Simulating [expressions](https://github.com/ComputeNode/cyfra/blob/main/cyfra-dsl/):
+the baseline of Cyfra's DSL (see `Expression.scala`)
+- Interpreting [GIO](https://github.com/ComputeNode/cyfra/blob/dev/cyfra-dsl/):
 Cyfra's [monad](https://en.wikipedia.org/wiki/Monad_(functional_programming))
-type for GPU compute (which builds on expressions)
-- Scaling the simulator to handle multiple
+type for GPU compute (see `gio/GIO.scala`)
+- Scaling the simulator to handle, in parallel, multiple
 [invocations](https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_InvocationID.xhtml)
-in parallel
 - Propagating these changes to the interpreter (which builds on the simulator)
-- Profiling reads in the simulator
-- Profiling writes in the interpreter
+- Profiling reads in the simulator, writes in the interpreter
 - Profiling whether reads/writes "coalesce" (use contiguous buffer addresses)
 - Profiling branching paths in if/else expressions, measuring idle periods.
 
@@ -252,6 +254,9 @@ def simOne(e: Expression[?]) = e match
   case Vec2(tree)                   => ???
   case Vec3(tree)                   => ???
   case Vec4(tree)                   => ???
+  case ReadBuffer(buffer, index)    => ???
+  case ReadUniform(uniform)         => ???
+  case WhenExpr(when, thenCode, otherConds, otherCaseCodes, otherwise) => ???
   case ExtFunctionCall(fn, args)    => ???
   case FunctionCall(fn, body, args) => ???
   case InvocationId                 => ???
@@ -263,8 +268,25 @@ def simOne(e: Expression[?]) = e match
   case e: GetField[?, ?]            => ???
 ```
 
-At the end, most of them turn into `Float | Int | Boolean` or
-`Vector[Float] | Vector[Int] | Vector[Boolean]`. Let's call this type `Result`.
+Most of these are self-explanatory: doing basic arithmetic, logic, vector algebra etc.
+At the end, they turn into `Float | Int | Boolean` or
+`Vector[Float] | Vector[Int] | Vector[Boolean]`.
+Let's call this type `Result`.
+
+`ReadBuffer` refers to each invocation on the GPU reading a different buffer address,
+whereas `ReadUniform` refers to the "uniform" section of GPU memory
+that does not depend on invocation id.
+Since we don't have access to the GPU here, we'll fake the buffers with some arrays:
+
+```scala
+case class SimData(
+  bufMap: Map[GBuffer[?], Array[Result]],
+  uniMap: Map[GUniform[?], Result]
+)
+```
+
+The most interesting is `WhenExpr`, which is like an `if / else if / else` chain; this is
+where some invocations will execute a branch, while others will remain idle.
 
 The naive approach is to simply follow the recursive structure of the DSL. For example
 
@@ -295,10 +317,10 @@ Since it's a simple list, it can be made tail-recursive very easily!
 
 ```scala
 @annotation.tailrec
-def simOne(exprs: List[Expression[?]], cache: Map[TreeId, Result]): Result
+def simIterate(exprs: List[Expression[?]], cache: Map[ExprId, Result]): Result
 ```
 
-But what about the topological sort? It's a fairly complex algorithm.
+But what about the topological sort? It's a non-trivial algorithm.
 Thankfully, I did not have to implement that from scratch!
 Cyfra's [compiler](https://github.com/ComputeNode/cyfra/tree/main/cyfra-compiler)
 already has a topological sorter called `buildBlock`:
@@ -312,11 +334,70 @@ Normally it is used to compile Cyfra to SPIR-V, but now it can pull double duty!
 
 ### Interpreting a GIO, one at a time
 
+In contrast, there are very few `GIO[T]` types:
+
+```scala
+case Pure(value)                       => ???
+case WriteBuffer(buffer, index, value) => ???
+case WriteUniform(uniform, value)      => ???
+case FlatMap(gio, next)                => ???
+case Repeat(n, f)                      => ???
+```
+
+In fact, `FlatMap` and `Repeat` just sequence the other operations,
+and `Pure` just simulates a side-effect-free value.
+So the only important ones here are the two write operations.
+
+This is mainly because, the monad is supposed to model
+the side effecting operations (like writing data).
+You might be thinking that reading is also a side effect, but here by side effect
+we mean "altering the state of the outside world", in other words, writing.
+
 TODO
 
 ### Simulating invocations in parallel
 
-TODO
+Now the difficult part: we need to mimic the GPU's behavior of progressing hundreds of
+invocations together along a computation. Going back to our sum example, you can think of
+earlier sub-expressions evaluating to different results on different invocations
+(because they will read values from different buffer addresses):
+
+|Expr       |invoc0|invoc1|invoc2|...|
+|----------:|:----:|:----:|:----:|:-:|
+|`a`        |     2|    -3|     7|...|
+|`b`        |     1|    -2|     5|...|
+|`Sum(a, b)`|     3|    -5|    12|...|
+
+So we need a cache of previous results for each invocation.
+This naturally lends itself to a map of maps:
+
+```scala
+type Cache   = Map[ExprId, Result]
+type Records = Map[InvocationId, Cache]
+```
+
+So now we need to look up results for each invocation, use them to compute,
+then record the new results for each invocation, and keep moving along
+(the code here is a bit simplified for demonstration purposes):
+
+```scala
+def simOne(e: Expression[?], records: Records): Records = e match
+  // all the expression cases... here's one example
+  case Sum(a, b) =>
+    records.map: (invocId, cache) =>
+      val aResult = cache(a.exprId)   // look up previous results, per invocation
+      val bResult = cache(b.exprId)
+      val result  = aResult + bResult // sum the results
+      invocId -> cache.updated(e.exprId, result)
+  // ...
+
+@annotation.tailrec
+def simIterate(blocks: List[Expression[?]], records: Records): Records = blocks match
+  case head :: next =>
+    val newRecords = simOne(head, records)
+    simIterate(next, newRecords)
+  case Nil => records
+```
 
 ### Interpreting invocations in parallel
 
@@ -335,8 +416,8 @@ TODO
 There are some missing `Expression` types, such as external function calls,
 `GSeq`s, and so on, which are not simulated properly yet.
 
-The interpreter treats invocations as linear; in the future it should probably
-accomodate concepts such as
+The interpreter treats invocations as linear;
+in the future it should accomodate more general concepts such as
 [workgroups and dimensions](https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_WorkGroupSize.xhtml).
 
 I'd like to generalize the interpreter to `GProgram`s that build on and go beyond `GIO`s.
@@ -349,8 +430,9 @@ Putting that aside, the biggest issue was the unknown nature of the project.
 A lot of things had to be figured out and required creativity.
 Some of this was very abstract and general; I struggled not knowing what to do.
 Without pinning down actual technical details first, I wasn't able to have a broad vision.
+
 It's not so much an issue of problem solving skills (the "how");
-it's about *not even knowing what the problem is* (the "what").
+it's about *not even knowing what the problem / task is* (the "what").
 I realized that I am not very good at open-ended, research-like work.
 I function much better if I am given clear tasks with details,
 starting with small things where it is *known what needs to be done*.
