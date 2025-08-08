@@ -131,13 +131,14 @@ extension (stream: Stream[Pure, Int]) // not generic
         Stream.emits(res)
 ```
 
-We would have to do one of these for every `Stream[F, O]` that we wanted to have.
-It was obvious that the runtime needed to be redesigned.
+We would have to do one of these for every pair of `Stream[F, O1] => Stream[F, O2]`
+that we wanted to have. It was obvious that the runtime needed to be redesigned.
 
 ### Challenges
 
 The main challenge was the changing Cyfra Runtime API that was in development
 in parallel to my project, and adapting to these changes (as an API user).
+The runtime is even more complicated than my projects, so I won't explain it much here.
 
 Another challenge was the high conceptual difficulty of the problem.
 The solution required high level, abstract, imaginative thinking.
@@ -155,7 +156,7 @@ In particular:
 - This caused issues when trying to allocate space on the GPU to run an fs2 stream.
 - The basic data structure we use is `java.nio.ByteBuffer`.
 - So, I needed a way to connect a Scala type and a Cyfra type.
-  - The size of the data needs to be measured correctly, and fed as just bytes,
+  - The data needs to be sized correctly, and fed as just bytes,
   - and it needs to be type-safe, as much as possible.
 
 I tried some approaches using
@@ -213,6 +214,7 @@ all they have to implement is a given instance between the two appropriate types
 #### Further work on type bridges
 
 Making these type bridges even more polymorphic / generic would be very useful.
+The bridge should be able to work with more general data structures than just `fs2.Chunk`.
 
 ### fs2 mapping through Cyfra
 
@@ -260,8 +262,8 @@ for writing GPU programs, using the redesigned runtime.
 #### Further work
 
 I would like to implement more of fs2's streaming API on Cyfra, adding more methods.
-This can be tricky. For example, implementing a `.filter` method requires doing a scan and
-[stream compaction](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda).
+This can be tricky. For example, implementing a `.filter` method requires doing a
+[scan and stream compaction](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda).
 
 Currently we are mostly dealing with "pure" fs2 streams without side effects.
 In the future we should find a way to do the side effects of the effect type `F[_]`.
@@ -368,7 +370,7 @@ Let's call this type `Result`.
 
 `ReadBuffer` refers to each invocation on the GPU reading a different buffer address,
 whereas `ReadUniform` refers to the "uniform" section of GPU memory
-that does not depend on invocation id.
+that does not depend on the invocation id.
 Since we don't have access to the GPU here, we'll fake the buffers with some arrays:
 
 ```scala
@@ -395,6 +397,7 @@ The typical way to overcome stack overflow in cases like this is to rewrite it
 using [tail recursion](https://en.wikipedia.org/wiki/Tail_call).
 This can be difficult to do when the traversed structure isn't a simple list.
 In our case we have an [AST](https://en.wikipedia.org/wiki/Abstract_syntax_tree).
+Each expression on the tree has an id number called `treeid`.
 
 One common approach is to turn the tree into a list, so that it is
 [topologically sorted](https://en.wikipedia.org/wiki/Topological_sorting).
@@ -410,7 +413,7 @@ Since it's a simple list, it can be made tail-recursive very easily!
 
 ```scala
 @annotation.tailrec
-def simIterate(exprs: List[Expression[?]], cache: Map[ExprId, Result]): Result
+def simIterate(exprs: List[Expression[?]], cache: Map[TreeId, Result]): Result
 ```
 
 But what about the topological sort? It's a non-trivial algorithm.
@@ -424,6 +427,11 @@ def buildBlock(tree: Expression[?], providedExprIds: Set[Int] = Set.empty): List
 
 It consumes an `Expression` and returns a topo-sorted list of its entire AST.
 Normally it is used to compile Cyfra to SPIR-V, but now it can pull double duty!
+Then `simOne` can use it with `simIterate`:
+
+```scala
+def simOne(e: Expression[?]) = simIterate(buildBlock(e), Map())
+```
 
 ### Interpreting a GIO, one at a time
 
@@ -446,26 +454,18 @@ the side effecting operations (like writing data).
 You might be thinking that reading is also a side effect, but here by side effect
 we mean "altering the state of the outside world", in other words, writing.
 
-So we do the side effect and write data to the (fake) buffer
-at different addresses for each invocation.
+So we do the side effect and write data to the (fake) buffer.
 
 ```scala
-def interpretWriteBuffer(gio: WriteBuffer[?], sc: SimContext): SimContext = gio match
+def interpretWriteBuffer(gio: WriteBuffer[?], data: SimData): (Result, SimData) = gio match
   case WriteBuffer(buffer, index, value) =>
-    val indexSc = Simulate.sim(index, sc) // get the write index for each invocation
-    val SimContext(writeVals, records, data, profs) = Simulate.sim(value, indexSc) // get the values to be written
-    // write the values to the buffer, update records with writes
-    val indices = indexSc.results
-    val newData = data.writeToBuffer(buffer, indices, writeVals)
-    val writes = indices.map: (invocId, ind) =>
-      invocId -> WriteBuf(buffer, ind.asInstanceOf[Int], writeVals(invocId))
-    val newRecords = records.addWrites(writes)
-    // check if the write addresses coalesced or not
-    val addresses = indices.values.toSeq.map(_.asInstanceOf[Int])
-    val profile = WriteProfile(buffer, addresses)
-    val coalesceProfile = CoalesceProfile(addresses, profile)
-    SimContext(writeVals, newRecords, newData, coalesceProfile :: profs)
+    val index = Simulate.sim(index)                   // get the write index
+    val writeVal = Simulate.sim(value, indexSc)       // get the value to be written
+    val newData = data.write(buffer, index, writeVal) // write value to (fake) buffer
+    (valueToWrite, newData)                           // return value and updated data
 ```
+
+`WriteUniform` is similar.
 
 ### Simulating invocations in parallel
 
@@ -484,7 +484,7 @@ So we need a cache of previous results for each invocation.
 This naturally lends itself to a map of maps:
 
 ```scala
-type Cache   = Map[ExprId, Result]
+type Cache   = Map[TreeId, Result]
 type Records = Map[InvocId, Cache]
 ```
 
@@ -497,10 +497,10 @@ def simOne(e: Expression[?], records: Records): Records = e match
   // all the expression cases... here's one example
   case Sum(a, b) =>
     records.map: (invocId, cache) =>
-      val aResult = cache(a.exprId)   // look up previous results, per invocation
-      val bResult = cache(b.exprId)
+      val aResult = cache(a.treeid)   // look up previous results, per invocation
+      val bResult = cache(b.treeid)
       val result  = aResult + bResult // sum the results
-      invocId -> cache.updated(e.exprId, result)
+      invocId -> cache.updated(e.treeid, result)
   // ...
 
 @annotation.tailrec
@@ -513,17 +513,32 @@ def simIterate(blocks: List[Expression[?]], records: Records): Records = blocks 
 
 ### Interpreting invocations in parallel
 
-TODO
+Very similar, with a little redesign.
+Here we are starting to keep track of writes, which will be explained later below
+(again, the code here is a bit simplified for demonstration purposes):
+
+```scala
+def interpretWriteBuffer(gio: WriteBuffer[?], records: Records, data: SimData): (Records, SimData) = gio match
+  case WriteBuffer(buffer, index, value) =>
+    val indices = Simulate.sim(index, records)        // get index to write for each invoc
+    val values = Simulate.sim(value, records)         // get value to write for each invoc
+    val newData = data.write(buffer, indices, values) // write all data
+    val writes = indices.map: (invocId, index) =>     // track writes
+      invocId -> (buffer, index, values(invocId))
+    val newRecords = records.addWrites(writes)        // add writes to records
+    (newRecords, newData)
+```
 
 ### Keeping track of reads and writes, and coalescence
 
-We will have to do some redesigning.
+It is useful for debugging and profiling purposes to track reads and writes.
+For this, we will have to do some redesigning.
 We have to expand our `Records` to cache not just `Result`s but reads/writes as well:
 
 ```scala
 enum Read:
-  case ReadBuf(id: Int, buffer: GBuffer[?], index: Int, value: Result)
-  case ReadUni(id: Int, uniform: GUniform[?], value: Result)
+  case ReadBuf(id: TreeId, buffer: GBuffer[?], index: Int, value: Result)
+  case ReadUni(id: TreeId, uniform: GUniform[?], value: Result)
 
 enum Write:
   case WriteBuf(buffer: GBuffer[?], index: Int, value: Result)
@@ -544,17 +559,60 @@ type Results = Map[InvocId, Result] // for each invoc, the result of last expr e
 case class SimContext(results: Results, records: Records, data: SimData)
 ```
 
+We update the code we had before accordingly.
+Now we consume and return `SimContext` instead.
+For example (again, simplified):
+
+```scala
+def simOne(e: Expression[?], sc: SimContext): SimContext = e match
+  // ... other cases
+  case ReadBuffer(buffer, index) => simReadBuffer(e, sc)  // reads will be tracked here
+  case ReadUniform(uniform)      => simReadUniform(e, sc) // reads will be tracked here
+  // ... other cases
+
+@annotation.tailrec
+def simIterate(blocks: List[Expression[?]], sc: SimContext): SimContext = blocks match
+  case head :: next =>
+    val newSc = simOne(head, sc) // reads tracked here if needed
+    simIterate(next, newSc)
+  case Nil => sc
+```
+
+Similarly for the interpreter and writes.
+
 #### Coalesce profiles
 
-Now we also need to track read / write profiles. So, a bit more redesign.
-We want to check if reads / writes of many invocations happen on contiguous addresses.
-Add one more field to our `SimContext`, and write some logic to check addresses:
+Now we want to check if reads / writes of many invocations happen on contiguous addresses.
+This type of analysis can be very useful for performance profiling.
+If invocations read/write contiguously on the GPU memory, the performance is higher.
+If they are jumping over a bunch of memory addresses, performance will be lower.
+
+We need to track some read / write profiles. So, a bit more redesign.
+Add one more field to our `SimContext`:
 
 ```scala
 case class SimContext(results: Results, records: Records, data: SimData, profiles: List[Coalesce])
+```
 
+The addresses are contiguous if, when ordered
+from smallest to largest, they increase by 1 at each step:
+
+```scala
+List(23, 24, 25, 26, 27)
+```
+
+Another way to say this is: the number of elements equals the max minus the min plus 1:
+
+```scala
+List(23, 24, 25, 26, 27) // 5 elements, 27 - 23 + 1 = 5
+List(23, 24, 25, 27, 28) // 5 elements, 28 - 23 + 1 = 6 != 5
+```
+
+And we write this logic to check addresses for coalescence:
+
+```scala
 enum Profile:
-  case ReadProfile(treeid: TreeId, addresses: Seq[Int])
+  case ReadProfile(id: TreeId, addresses: Seq[Int])
   case WriteProfile(buffer: GBuffer[?], addresses: Seq[Int])
 
 enum Coalesce:
@@ -569,7 +627,29 @@ object Coalesce:
 ```
 
 Then we add some logic to both the simulator and the interpreter
-so that they can create and add instances of these profiles.
+so that they can create and add instances of these profiles. For example:
+
+```scala
+def simReadBuffer(e: ReadBuffer[?], sc: SimContext): SimContext =
+  val SimContext(results, records, data, profs) = sc // pattern matching to de-structure
+  e match
+    case ReadBuffer(buffer, index) =>
+      // get read addresses, read the values, record the read operations
+      val indices    = records.view.mapValues(_.cache(index.tree.treeid)).toMap
+      val readValues = indices.view.mapValues(i => data.lookup(buffer, i)).toMap
+      val newRecords = records.map: (invocId, record) =>
+        val read = ReadBuf(e.treeid, buffer, indices(invocId), readValues(invocId))
+        invocId -> record.addRead(read)
+
+      // check if the read addresses coalesced or not
+      val addresses = indices.values.toSeq
+      val profile   = ReadProfile(e.treeid, addresses)
+      val coalesce  = Coalesce(addresses, profile)
+
+      SimContext(readValues, newRecords, data, coalesce :: profs) // return new context
+```
+
+Similar for writes and uniforms.
 
 ### Profiling branches
 
@@ -577,17 +657,24 @@ Recall the if / else if / else expressions of the DSL:
 
 ```scala
 case class WhenExpr[T <: Value: Tag](
-  when: GBoolean,
-  thenCode: Scope[T],
-  otherConds: List[Scope[GBoolean]],
-  otherCaseCodes: List[Scope[T]],
-  otherwise: Scope[T],
+  when: GBoolean,                    // if
+  thenCode: Scope[T],                // then
+  otherConds: List[Scope[GBoolean]], // list of else if's
+  otherCaseCodes: List[Scope[T]],    // list of then's
+  otherwise: Scope[T],               // else
 ) extends Expression[T]
 ```
 
 Invocations can evaluate `when` differently from each other.
 Those that evaluate `true` will follow that branch and evaluate `thenCode`,
-but others will have to idle and wait. Here's a conceptual example with 4 invocations:
+but others will have to idle and wait.
+They perform a ["noop"](https://en.wikipedia.org/wiki/NOP_(code)) in that case.
+Then the waiting invocations will try the next "else if" branch, and so on.
+
+Here's a conceptual example with 4 invocations and 5 logic branches.
+Invocation 1 enters the first branch immediately, the others wait.
+Then invocations 0 and 2 evaluate `true` in the first `else if` branch.
+Invocation 3 never evaluates `true`, it keeps waiting all the way until the final `else`:
 
 |     |inv 0|inv 1|inv 2|inv 3|
 |:---:|:---:|:---:|:---:|:---:|
@@ -598,13 +685,15 @@ but others will have to idle and wait. Here's a conceptual example with 4 invoca
 |owise|noop |noop |noop |enter|
 
 It is helpful to track the periods of idleness, which expression it happens on,
-for which invocation, and for how long:
+for which invocation, and for how long (and redesign our `Record` to include this):
 
 ```scala
-case class IdlePeriod(exprId: ExprId, invocId: InvocId, length: Int)
+case class Record(cache: Cache, writes: List[Write], reads: List[Read], idles: List[Idle])
+case class Idle(treeid: TreeId, invocId: InvocId, length: Int)
 ```
 
 We add the necessary logic to the simulator, where `WhenExpr` is simulated.
+The code is quite complicated so I'll skip it here.
 
 ### Future work
 
