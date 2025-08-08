@@ -1,26 +1,30 @@
 # GSoC 2025
 
 - [GSoC 2025](#gsoc-2025)
+  - [Where is the code?](#where-is-the-code)
   - [Goals](#goals)
     - [Project goals](#project-goals)
     - [Long term personal goals for the future](#long-term-personal-goals-for-the-future)
   - [Learning the codebase, making first contributions](#learning-the-codebase-making-first-contributions)
   - [Fs2 integration](#fs2-integration)
+    - [Initial version](#initial-version)
     - [Challenges](#challenges)
     - [A "type bridge"](#a-type-bridge)
       - [Further work on type bridges](#further-work-on-type-bridges)
     - [fs2 mapping through Cyfra](#fs2-mapping-through-cyfra)
       - [Further work](#further-work)
   - [Cyfra Interpreter](#cyfra-interpreter)
+    - [Progress](#progress)
     - [Simulating expressions, just one at a time](#simulating-expressions-just-one-at-a-time)
       - [Overcoming stack overflow](#overcoming-stack-overflow)
     - [Interpreting a GIO, one at a time](#interpreting-a-gio-one-at-a-time)
     - [Simulating invocations in parallel](#simulating-invocations-in-parallel)
     - [Interpreting invocations in parallel](#interpreting-invocations-in-parallel)
     - [Keeping track of reads and writes, and coalescence](#keeping-track-of-reads-and-writes-and-coalescence)
+      - [Coalesce profiles](#coalesce-profiles)
     - [Profiling branches](#profiling-branches)
     - [Future work](#future-work)
-  - [Impressions and reflections](#impressions-and-reflections)
+  - [Reflections](#reflections)
 
 I participated in 2025's Google Summer of Code,
 to contribute to [Cyfra](https://github.com/ComputeNode/cyfra/).
@@ -28,10 +32,19 @@ to contribute to [Cyfra](https://github.com/ComputeNode/cyfra/).
 Cyfra is a DSL (in Scala 3) and runtime to do general programming on the GPU.
 It compiles its DSL to SPIR-V assembly and runs it via Vulkan runtime on GPUs.
 
-My contributions can be found at:
+## Where is the code?
+
+My major contributions (merged into `dev`) can be found at:
 
 - [Fs2 interop](https://github.com/ComputeNode/cyfra/pull/63)
-- [Cyfra interpreter](https://github.com/ComputeNode/cyfra/pull/62).
+- [Cyfra interpreter](https://github.com/ComputeNode/cyfra/pull/62)
+
+My minor contributions (merged into `main`):
+
+- [GArray refactor](https://github.com/ComputeNode/cyfra/pull/28)
+- [GMem refactor](https://github.com/ComputeNode/cyfra/pull/37)
+- [tests coverage](https://github.com/ComputeNode/cyfra/pull/44)
+- [linting and Github Actions](https://github.com/ComputeNode/cyfra/pull/49)
 
 ## Goals
 
@@ -49,15 +62,18 @@ I would like to create a GPU programming course suitable for beginners using Cyf
 
 ## Learning the codebase, making first contributions
 
-During the bonding period, in order to get familiar with Cyfra, I:
+During the bonding period, in order to get familiar with Cyfra,
+I made some code refactors and additions:
 
-- made some code refactors to the API:
-  - [GArray refactor](https://github.com/ComputeNode/cyfra/pull/28)
-  - [GMem refactor](https://github.com/ComputeNode/cyfra/pull/37)
-- added [tests coverage](https://github.com/ComputeNode/cyfra/pull/44) and
-- added [linting and Github Actions](https://github.com/ComputeNode/cyfra/pull/49).
+- I [refactored GArray](https://github.com/ComputeNode/cyfra/pull/28)
+- and [GMem](https://github.com/ComputeNode/cyfra/pull/37)
+- I also [added testing coverage](https://github.com/ComputeNode/cyfra/pull/44) and
+- [changed syntax and Github Actions](https://github.com/ComputeNode/cyfra/pull/49).
 
 During testing I was able to discover some bugs in the Cyfra compiler, which were fixed.
+
+Much of these changes, especially involving `GMem`, became legacy and were archived,
+as the Cyfra runtime was redesigned from the ground up.
 
 ## Fs2 integration
 
@@ -73,16 +89,63 @@ type Pipe[F[_], -I, +O] = Stream[F, I] => Stream[F, O]
 which can then be used on a `Stream` with
 [`.through`](https://www.javadoc.io/static/co.fs2/fs2-docs_2.13/3.12.0/fs2/Stream.html#through[F2[x]%3E:F[x],O2](f:fs2.Stream[F,O]=%3Efs2.Stream[F2,O2]):fs2.Stream[F2,O2]).
 
+The analogy is obvious: a stream runs through a pipe, gets transformed to a new stream.
+This is very similar to a `.map` method, but instead of a function that transforms
+individual elements, it works with a function that transforms the whole stream.
+
 The idea is to create a sort of "Cyfra pipe".
+So the computations happen on the Cyfra side, executed on the GPU.
+Then the stream goes back to fs2 / Scala land.
+
+To get a better idea, look at this basic unit test:
+
+```scala
+test("fs2 through gPipeMap, just ints"):
+  val inSeq = (0 until 256).toSeq                  // just some numbers
+  val stream = Stream.emits(inSeq)                 // fs2 stream
+  val pipe = gPipeMap[Pure, Int32, Int](_ + 1)     // Cyfra pipe, done on GPU
+  val result = stream.through(pipe).compile.toList // resulting fs2 stream
+  val expected = inSeq.map(_ + 1)                  // same, on Scala/CPU, for comparison
+  result
+    .zip(expected)
+    .foreach: (res, exp) =>
+      assert(res == exp, s"Expected $exp, got $res")
+```
+
+### Initial version
+
+Initially I had a working version that used the older Cyfra runtime (now archived).
+The older runtime's `GMem` was not polymorphic, it needed separate classes for each type.
+Which meant implementing the pipe multiple times, for each data type. For example:
+
+```scala
+// using the now-legacy, older runtime
+extension (stream: Stream[Pure, Int]) // not generic
+  def gPipeInt(fn: Int32 => Int32)(using GContext): Stream[Pure, Int] =
+    val gf: GFunction[Empty, Int32, Int32] = GFunction(fn)
+    stream
+      .chunkMin(256)
+      .flatMap: chunk =>
+        val gmem = IntMem(chunk.toArray) // non-polymorphic memory
+        val res = gmem.map(gf).asInstanceOf[IntMem].toArray
+        Stream.emits(res)
+```
+
+We would have to do one of these for every `Stream[F, O]` that we wanted to have.
+It was obvious that the runtime needed to be redesigned.
 
 ### Challenges
 
-The main challenge was the rapidly changing Cyfra API that was in development
+The main challenge was the changing Cyfra Runtime API that was in development
 in parallel to my project, and adapting to these changes (as an API user).
 
-For my project in particular:
+Another challenge was the high conceptual difficulty of the problem.
+The solution required high level, abstract, imaginative thinking.
+Without some small concrete details to grab onto, I struggled a lot with this.
 
-- The main challenge was the fact that, on the GPU side, we don't have Scala / JVM types.
+In particular:
+
+- On the GPU side, we don't have Scala / JVM types.
 - Therefore Cyfra has its own types in the DSL.
 - But, fs2 uses Scala types, and has no knowledge of Cyfra's DSL.
   - Moreover, there is type erasure on the JVM to deal with!
@@ -92,14 +155,17 @@ For my project in particular:
 - This caused issues when trying to allocate space on the GPU to run an fs2 stream.
 - The basic data structure we use is `java.nio.ByteBuffer`.
 - So, I needed a way to connect a Scala type and a Cyfra type.
+  - The size of the data needs to be measured correctly, and fed as just bytes,
+  - and it needs to be type-safe, as much as possible.
 
 I tried some approaches using
 [Match types](https://docs.scala-lang.org/scala3/reference/new-types/match-types.html)
 but could not make it work. Then I tried a
-[typeclass](https://docs.scala-lang.org/scala3/book/ca-type-classes.html)
-approach.
+[typeclass](https://docs.scala-lang.org/scala3/book/ca-type-classes.html) approach.
 
 ### A "type bridge"
+
+After thinking a lot and getting stuck for some time, eventually this idea emerged:
 
 ```scala
 trait Bridge[CyfraType <: Value: FromExpr: Tag, ScalaType: ClassTag]:
@@ -110,12 +176,23 @@ trait Bridge[CyfraType <: Value: FromExpr: Tag, ScalaType: ClassTag]:
 Here `Chunk` refers to [`fs2.Chunk`](https://fs2.io/#/guide?id=chunks),
 a lower-level data structure that `fs2.Stream` is built on.
 
+This bridge lets us convert data back and forth between Cyfra and Scala types,
+so data can be passed around in buffers.
+
+We create
+[`given` instances](https://docs.scala-lang.org/scala3/reference/contextual/givens.html)
+of these bridges to be used implicitly. That's how Scala handles type classes.
 For example, we have these few basic bridges between Cyfra and Scala types:
 
 ```scala
 // left: Cyfra type, right: Scala type
 given Bridge[Int32, Int]:
-  // ...
+  def toByteBuffer(inBuf: ByteBuffer, chunk: Chunk[Int]): ByteBuffer =
+    inBuf.asIntBuffer().put(chunk.toArray[Int]).flip()
+    inBuf
+  def fromByteBuffer(outBuf: ByteBuffer, arr: Array[Int]): Array[Int] =
+    outBuf.asIntBuffer().get(arr).flip()
+    arr
 given Bridge[Float32, Float]:
   // ...
 given Bridge[Vec4[Float32], fRGBA]:
@@ -124,19 +201,23 @@ given Bridge[GBoolean, Boolean]:
   // ...
 ```
 
-These bridge allows us to take a chunk of data from an fs2 `Stream`,
+These bridges allow us to take a chunk of data from an fs2 `Stream`,
 correctly measure the size we need to allocate for a `ByteBuffer`,
-and after computation is done, putting it back into an fs2 `Stream`,
+and after the computation is done, put it back into an fs2 `Stream`,
 making sure everything type-checks correctly.
+
+This approach is much more generic; if someone wants a pipe for a `Stream[F, O]`,
+all they have to implement is a given instance between the two appropriate types
+(instead of implementing the whole pipe, like before in the legacy version).
 
 #### Further work on type bridges
 
-Making these type bridges more polymorphic / generic would be very useful.
+Making these type bridges even more polymorphic / generic would be very useful.
 
 ### fs2 mapping through Cyfra
 
-After this obstacle, running an fs2 stream through a Cyfra pipe
-still required some work, but it was fairly straightforward.
+After this big obstacle, running an fs2 stream through a Cyfra pipe
+still required a lot of work, but it was fairly straightforward.
 The type signature looks very scary, but it's actually not that bad:
 
 ```scala
@@ -154,7 +235,7 @@ object GPipe:
   ): Pipe[F, S1, S2]
 ```
 
-The core part of the code looks a bit like this:
+There is a lot more involved, but the core part of the code looks a bit like this:
 
 ```scala
 stream
@@ -174,7 +255,7 @@ stream
 As you can see, we are using the type bridges to put the data in / out of buffers.
 We start with a `Stream` on the fs2 side, and we end up with another `Stream`.
 The `region`, `ProgramLayout` and `GBuffer` refer to parts of Cyfra's API
-for writing GPU programs.
+for writing GPU programs, using the redesigned runtime.
 
 #### Further work
 
@@ -182,15 +263,27 @@ I would like to implement more of fs2's streaming API on Cyfra, adding more meth
 This can be tricky. For example, implementing a `.filter` method requires doing a scan and
 [stream compaction](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda).
 
+Currently we are mostly dealing with "pure" fs2 streams without side effects.
+In the future we should find a way to do the side effects of the effect type `F[_]`.
+For example, how can we print some text on the GPU? Is it even possible?
+Some side effects might be impossible, but a partial solution might work.
+
 We would like to generalize Cyfra pipes to any sort of data, not just fs2 `Stream`s.
 That way Cyfra can be used with many types of streaming data.
 
+Getting good performance will be tricky; we need to minimize the CPU<->GPU back and forth.
+To chain multiple stream operations, we need to keep the data on the GPU.
+Cyfra's new runtime API has the right building blocks to facilitate this.
+
 ## Cyfra Interpreter
 
-I was ahead of schedule on my fs2 project;
-also I had to wait a bit for some big changes to Cyfra's runtime API.
-So I worked on another project:
-[making an interpreter](https://nrinaudo.github.io/articles/pl.html).
+My other project is to [make an interpreter](https://nrinaudo.github.io/articles/pl.html)
+for Cyfra that can run on the CPU and simulate GPU computations.
+
+### Progress
+
+Since making an interpreter is a well-understood problem,
+and the GPU was not involved here, this project was easier and went more smoothly.
 
 It evolved gradually in stages:
 
@@ -199,7 +292,7 @@ the baseline of Cyfra's DSL (see `Expression.scala`)
 - Interpreting [GIO](https://github.com/ComputeNode/cyfra/blob/dev/cyfra-dsl/):
 Cyfra's [monad](https://en.wikipedia.org/wiki/Monad_(functional_programming))
 type for GPU compute (see `gio/GIO.scala`)
-- Scaling the simulator to handle, in parallel, multiple
+- Scaling the simulator to handle multiple
 [invocations](https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_InvocationID.xhtml)
 - Propagating these changes to the interpreter (which builds on the simulator)
 - Profiling reads in the simulator, writes in the interpreter
@@ -285,10 +378,10 @@ case class SimData(
 )
 ```
 
-The most interesting is `WhenExpr`, which is like an `if / else if / else` chain; this is
-where some invocations will execute a branch, while others will remain idle.
+The most interesting is `WhenExpr`, which is like an `if / else if / else` chain;
+this is where some invocations will execute a branch, while others will remain idle.
 
-The naive approach is to simply follow the recursive structure of the DSL. For example
+The naive approach is to simply follow the recursive structure of the DSL:
 
 ```scala
 case Sum(a, b) => simOne(a) + simOne(b)
@@ -353,11 +446,30 @@ the side effecting operations (like writing data).
 You might be thinking that reading is also a side effect, but here by side effect
 we mean "altering the state of the outside world", in other words, writing.
 
-TODO
+So we do the side effect and write data to the (fake) buffer
+at different addresses for each invocation.
+
+```scala
+def interpretWriteBuffer(gio: WriteBuffer[?], sc: SimContext): SimContext = gio match
+  case WriteBuffer(buffer, index, value) =>
+    val indexSc = Simulate.sim(index, sc) // get the write index for each invocation
+    val SimContext(writeVals, records, data, profs) = Simulate.sim(value, indexSc) // get the values to be written
+    // write the values to the buffer, update records with writes
+    val indices = indexSc.results
+    val newData = data.writeToBuffer(buffer, indices, writeVals)
+    val writes = indices.map: (invocId, ind) =>
+      invocId -> WriteBuf(buffer, ind.asInstanceOf[Int], writeVals(invocId))
+    val newRecords = records.addWrites(writes)
+    // check if the write addresses coalesced or not
+    val addresses = indices.values.toSeq.map(_.asInstanceOf[Int])
+    val profile = WriteProfile(buffer, addresses)
+    val coalesceProfile = CoalesceProfile(addresses, profile)
+    SimContext(writeVals, newRecords, newData, coalesceProfile :: profs)
+```
 
 ### Simulating invocations in parallel
 
-Now the difficult part: we need to mimic the GPU's behavior of progressing hundreds of
+Now we need to mimic the GPU's behavior of progressing hundreds of
 invocations together along a computation. Going back to our sum example, you can think of
 earlier sub-expressions evaluating to different results on different invocations
 (because they will read values from different buffer addresses):
@@ -373,7 +485,7 @@ This naturally lends itself to a map of maps:
 
 ```scala
 type Cache   = Map[ExprId, Result]
-type Records = Map[InvocationId, Cache]
+type Records = Map[InvocId, Cache]
 ```
 
 So now we need to look up results for each invocation, use them to compute,
@@ -405,37 +517,119 @@ TODO
 
 ### Keeping track of reads and writes, and coalescence
 
-TODO
+We will have to do some redesigning.
+We have to expand our `Records` to cache not just `Result`s but reads/writes as well:
+
+```scala
+enum Read:
+  case ReadBuf(id: Int, buffer: GBuffer[?], index: Int, value: Result)
+  case ReadUni(id: Int, uniform: GUniform[?], value: Result)
+
+enum Write:
+  case WriteBuf(buffer: GBuffer[?], index: Int, value: Result)
+  case WriteUni(uni: GUniform[?], value: Result)
+
+// each invocation has its own Record instance
+case class Record(cache: Cache, writes: List[Write], reads: List[Read])
+
+type Records = Map[InvocId, Record] // used to be just Cache, now full Record
+```
+
+Along with our simulation data, the stuff we have to keep track of is growing.
+For technical reasons, we also need to track the `Results` of the last expression.
+So let's collect them in one place and pass it around in the code:
+
+```scala
+type Results = Map[InvocId, Result] // for each invoc, the result of last expr evaluated
+case class SimContext(results: Results, records: Records, data: SimData)
+```
+
+#### Coalesce profiles
+
+Now we also need to track read / write profiles. So, a bit more redesign.
+We want to check if reads / writes of many invocations happen on contiguous addresses.
+Add one more field to our `SimContext`, and write some logic to check addresses:
+
+```scala
+case class SimContext(results: Results, records: Records, data: SimData, profiles: List[Coalesce])
+
+enum Profile:
+  case ReadProfile(treeid: TreeId, addresses: Seq[Int])
+  case WriteProfile(buffer: GBuffer[?], addresses: Seq[Int])
+
+enum Coalesce:
+  case Coalesced(startAddress: Int, endAddress: Int, profile: Profile)
+  case NotCoalesced(profile: Profile)
+
+object Coalesce:
+  def apply(addresses: Seq[Int], profile: Profile): Coalesce =
+    val (start, end) = (addresses.min, addresses.max)
+    val coalesced = end - start + 1 == addresses.length
+    if coalesced then Coalesced(start, end, profile) else NotCoalesced(profile)
+```
+
+Then we add some logic to both the simulator and the interpreter
+so that they can create and add instances of these profiles.
 
 ### Profiling branches
 
-TODO
+Recall the if / else if / else expressions of the DSL:
+
+```scala
+case class WhenExpr[T <: Value: Tag](
+  when: GBoolean,
+  thenCode: Scope[T],
+  otherConds: List[Scope[GBoolean]],
+  otherCaseCodes: List[Scope[T]],
+  otherwise: Scope[T],
+) extends Expression[T]
+```
+
+Invocations can evaluate `when` differently from each other.
+Those that evaluate `true` will follow that branch and evaluate `thenCode`,
+but others will have to idle and wait. Here's a conceptual example with 4 invocations:
+
+|     |inv 0|inv 1|inv 2|inv 3|
+|:---:|:---:|:---:|:---:|:---:|
+|when |noop |enter|noop |noop |
+|else1|enter|noop |enter|noop |
+|else2|noop |noop |noop |noop |
+|else3|noop |noop |noop |noop |
+|owise|noop |noop |noop |enter|
+
+It is helpful to track the periods of idleness, which expression it happens on,
+for which invocation, and for how long:
+
+```scala
+case class IdlePeriod(exprId: ExprId, invocId: InvocId, length: Int)
+```
+
+We add the necessary logic to the simulator, where `WhenExpr` is simulated.
 
 ### Future work
 
 There are some missing `Expression` types, such as external function calls,
 `GSeq`s, and so on, which are not simulated properly yet.
 
-The interpreter treats invocations as linear;
+The interpreter treats invocations as one linear sequence;
 in the future it should accomodate more general concepts such as
 [workgroups and dimensions](https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_WorkGroupSize.xhtml).
 
 I'd like to generalize the interpreter to `GProgram`s that build on and go beyond `GIO`s.
 
-## Impressions and reflections
+## Reflections
 
 The biggest struggle was the unbearable summer heat.
 
 Putting that aside, the biggest issue was the unknown nature of the project.
 A lot of things had to be figured out and required creativity.
 Some of this was very abstract and general; I struggled not knowing what to do.
-Without pinning down actual technical details first, I wasn't able to have a broad vision.
-
-It's not so much an issue of problem solving skills (the "how");
-it's about *not even knowing what the problem / task is* (the "what").
-I realized that I am not very good at open-ended, research-like work.
-I function much better if I am given clear tasks with details,
-starting with small things where it is *known what needs to be done*.
+My mentor was very helpful in this regard (thank you so much again!).
+He gave me small tasks to get me started and ideas to get me unstuck.
 
 I also struggled with the time pressure and the deadline.
+Not because I was behind in my work, but from fear of failure,
+due to the unknown factors of the problems mentioned above.
+It was very stressful and I was very anxious.
+I realized I worried needlessly, and I need to learn not to worry so much.
 Paradoxically, I ended up being ahead of schedule 😆
