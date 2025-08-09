@@ -624,8 +624,9 @@ then this could give us a false positive:
 List(23, 24, 25, 25, 27) // 5 elements, 27 - 23 + 1 = 5
 ```
 
-So we also need to check for race conditions: addresses should be distinct.
-Then we implement this logic to check addresses for coalescence:
+So we also need to check for race conditions: addresses should be distinct for writes.
+Reading from the same address should be OK.
+Then we implement this logic to check addresses for races and coalescence:
 
 ```scala
 enum Profile:
@@ -639,12 +640,18 @@ enum Coalesce:
 
 object Coalesce:
   def apply(addresses: Seq[Int], profile: Profile): Coalesce =
-    val distinct = addresses.distinct.length == addresses.length
-    if !distinct then RaceCondition(profile)
-    else
-      val (start, end) = (addresses.min, addresses.max)
-      val coalesced = end - start + 1 == addresses.length
-      if coalesced then Coalesced(start, end, profile) else NotCoalesced(profile)
+    val size = addresses.length
+    val distinct = addresses.distinct.length == size
+    val (start, end) = (addresses.min, addresses.max)
+    val coalesced = end - start + 1 == size
+    profile match
+      case WriteProfile(_, _) =>
+        if !distinct then RaceCondition(profile)
+        else if coalesced then Coalesced(start, end, profile)
+        else NotCoalesced(profile)
+      case ReadProfile(_, _, _) =>
+        if coalesced then Coalesced(start, end, profile)
+        else NotCoalesced(profile)
 ```
 
 Then we add some logic to both the simulator and the interpreter
