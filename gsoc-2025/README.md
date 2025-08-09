@@ -605,10 +605,27 @@ Another way to say this is: the number of elements equals the max minus the min 
 
 ```scala
 List(23, 24, 25, 26, 27) // 5 elements, 27 - 23 + 1 = 5
+```
+
+If they jumped over an address, then it's not the case:
+
+```scala
+// jump over 26
 List(23, 24, 25, 27, 28) // 5 elements, 28 - 23 + 1 = 6 != 5
 ```
 
-And we write this logic to check addresses for coalescence:
+But is this logic correct? We are assuming that the addresses are distinct.
+If two invocations try to write to the same address, like a
+[race condition](https://wlandau.github.io/gpu/lectures/cudac-atomics/cudac-atomics.pdf),
+then this could give us a false positive:
+
+```scala
+// 25 listed twice, but also jump over 26
+List(23, 24, 25, 25, 27) // 5 elements, 27 - 23 + 1 = 5
+```
+
+So we also need to check for race conditions: addresses should be distinct.
+Then we implement this logic to check addresses for coalescence:
 
 ```scala
 enum Profile:
@@ -616,14 +633,18 @@ enum Profile:
   case WriteProfile(buffer: GBuffer[?], addresses: Seq[Int])
 
 enum Coalesce:
+  case RaceCondition(profile: Profile)
   case Coalesced(startAddress: Int, endAddress: Int, profile: Profile)
   case NotCoalesced(profile: Profile)
 
 object Coalesce:
   def apply(addresses: Seq[Int], profile: Profile): Coalesce =
-    val (start, end) = (addresses.min, addresses.max)
-    val coalesced = end - start + 1 == addresses.length
-    if coalesced then Coalesced(start, end, profile) else NotCoalesced(profile)
+    val distinct = addresses.distinct.length == addresses.length
+    if !distinct then RaceCondition(profile)
+    else
+      val (start, end) = (addresses.min, addresses.max)
+      val coalesced = end - start + 1 == addresses.length
+      if coalesced then Coalesced(start, end, profile) else NotCoalesced(profile)
 ```
 
 Then we add some logic to both the simulator and the interpreter
@@ -674,15 +695,16 @@ Then the waiting invocations will try the next "else if" branch, and so on.
 Here's a conceptual example with 4 invocations and 5 logic branches.
 Invocation 1 enters the first branch immediately, the others wait.
 Then invocations 0 and 2 evaluate `true` in the first `else if` branch.
-Invocation 3 never evaluates `true`, it keeps waiting all the way until the final `else`:
+Invocation 3 never evaluates `true`,
+it keeps waiting all the way until the final `else` (here named `otherwise`):
 
-|     |inv 0|inv 1|inv 2|inv 3|
-|:---:|:---:|:---:|:---:|:---:|
-|when |noop |enter|noop |noop |
-|else1|enter|noop |enter|noop |
-|else2|noop |noop |noop |noop |
-|else3|noop |noop |noop |noop |
-|owise|noop |noop |noop |enter|
+|         |inv 0|inv 1|inv 2|inv 3|
+|:-------:|:---:|:---:|:---:|:---:|
+|when     |noop |enter|noop |noop |
+|else1    |enter|noop |enter|noop |
+|else2    |noop |noop |noop |noop |
+|else3    |noop |noop |noop |noop |
+|otherwise|noop |noop |noop |enter|
 
 It is helpful to track the periods of idleness, which expression it happens on,
 for which invocation, and for how long (and redesign our `Record` to include this):
