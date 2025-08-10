@@ -12,6 +12,11 @@
     - [A "type bridge"](#a-type-bridge)
       - [Further work on type bridges](#further-work-on-type-bridges)
     - [fs2 mapping through Cyfra](#fs2-mapping-through-cyfra)
+    - [fs2 filtering through Cyfra](#fs2-filtering-through-cyfra)
+      - [Challenges in filter](#challenges-in-filter)
+      - [Approach](#approach)
+      - [Implementing parallel prefix sum](#implementing-parallel-prefix-sum)
+      - [Implementing stream compaction](#implementing-stream-compaction)
       - [Further work](#further-work)
   - [Cyfra Interpreter](#cyfra-interpreter)
     - [Progress](#progress)
@@ -259,11 +264,134 @@ We start with a `Stream` on the fs2 side, and we end up with another `Stream`.
 The `region`, `ProgramLayout` and `GBuffer` refer to parts of Cyfra's API
 for writing GPU programs, using the redesigned runtime.
 
+### fs2 filtering through Cyfra
+
+Implementing a filter method on the GPU, in parallel, is quite tricky.
+Thankfully there is good literature on the subject (although mostly in CUDA C/C++):
+
+[Parallel prefix sum](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda).
+
+#### Challenges in filter
+
+For example, let's say we want to filter even numbers:
+
+```scala
+List(1, 2, 4, 3, 3, 1, 4, 8, 2, 5, 7) // filters to:
+List(., 2, 4, ., ., ., 4, 8, 2, ., .) // compacts to:
+List(2, 4, 4, 8, 2)
+```
+
+On the CPU/JVM we can do this easily, but on the GPU it's not so simple.
+The GPU works on large fixed blocks in parallel, not sequentially.
+
+- The resulting collection size is unknown ahead of time.
+- The indices of the filtered elements are also unknown.
+- We cannot simply create a new empty collection and keep appending to it sequentially,
+  like we do on the CPU.
+- We need to take advantage of GPU's parallelism anyway.
+- Implementing prefix sum is quite challenging.
+- Then implementing stream compaction is also challenging.
+
+#### Approach
+
+The literature guides us to the following approach:
+
+- Map the predicate over the collection to get a sequence of 0s and 1s:
+
+```scala
+List(1, 2, 4, 3, 3, 1, 4, 8, 2, 5, 7) // maps to:
+List(0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0)
+```
+
+- Run parallel prefix sum on the result:
+
+```scala
+List(1, 2, 4, 3, 3, 1, 4, 8, 2, 5, 7) // maps to:
+List(0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0) // scans to:
+List(0, 0, 1, 2, 2, 2, 2, 3, 4, 5, 5, 5) // (we add a 0 to the left)
+```
+
+- The last number in the prefix sum result is the size of the filtered collection
+  (in this case, 5).
+- The filtered elements are those where, in the prefix sum results,
+  the next entry is 1 greater:
+
+```scala
+List(1, 2, 4, 3, 3, 1, 4, 8, 2, 5, 7)    // original
+//      X  X           X  X  X           // filtered elements
+List(0, 0, 1, 2, 2, 2, 2, 3, 4, 5, 5, 5) // prefix sum
+```
+
+- In the compacted final collection, *the prefix sum result becomes the index*:
+
+```scala
+List(1, 2, 4, 3, 3, 1, 4, 8, 2, 5, 7)    // original
+//      X  X           X  X  X           // filtered elements
+List(0, 0, 1, 2, 2, 2, 2, 3, 4, 5, 5, 5) // prefix sum, gives us the indices
+List(2, 4, 4, 8, 2)
+//   0  1  2  3  4: the indices come from the prefix sum
+```
+
+#### Implementing parallel prefix sum
+
+Here we are still using the type bridges from before, but the discussion
+will focus more on how to stitch together multiple GPU programs in Cyfra.
+
+In normal Scala land, the signature looks like this:
+
+```scala
+object GPipe:
+  // ...
+  def gPipeFilter[
+    F[_],
+    C <: Value: Tag: FromExpr,
+    S: ClassTag
+  ](predicate: C => GBoolean)(
+    using cr: CyfraRuntime,
+    bridge: Bridge[C, S]
+  ): Pipe[F, S, S] =
+    (stream: Stream[F, S]) => ???
+```
+
+The initial portion is just like the map from before.
+We apply `predicate` to Cyfra values; but instead of `GBoolean` we'll return `Int32`.
+This is what Cyfra's `GProgram` API looks like; it needs definitions of memory layouts,
+the input and output buffers, their sizes as parameters, the size of a
+[workgroup](https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_WorkGroupSize.xhtml)
+(static or dynamic), and so on.
+Then we provide the code in Cyfra land that is executed for each invocation in parallel:
+
+```scala
+val predicateProgram = GProgram[Params, Layout](
+  layout = params =>
+    Layout(
+      in = GBuffer[C](params.inSize),     // collection to be filtered
+      out = GBuffer[Int32](params.inSize) // predicate results, as 0/1
+    ),
+  dispatch = (layout, params) => GProgram.StaticDispatch((params.inSize, 1, 1)),
+): layout =>
+  val invocId = GIO.invocationId                // each thread, or rather, GPU array index
+  val element = GIO.read[C](layout.in, invocId) // read input at that index
+  val result: Int32 = when(pred(element))(1: Int32).otherwise(0)
+  GIO.write[Int32](layout.out, invocId, result) // write result to output buffer at index
+```
+
+Here `when` and `.otherwise` are the if/else expressions of Cyfra's DSL.
+You can read more on that in the Interpreter project below.
+
+Then this GPU program is handed to an execution handler to be performed.
+
+TODO
+
+#### Implementing stream compaction
+
+TODO
+
 #### Further work
 
-I would like to implement more of fs2's streaming API on Cyfra, adding more methods.
-This can be tricky. For example, implementing a `.filter` method requires doing a
-[scan and stream compaction](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda).
+I would like to finish off the filter method, and implement more of fs2's streaming
+[API](https://www.javadoc.io/doc/co.fs2/fs2-docs_2.13/3.12.0/fs2/Stream.html) on Cyfra,
+adding more methods. This can be very tricky as we saw with the filter example.
 
 Currently we are mostly dealing with "pure" fs2 streams without side effects.
 In the future we should find a way to do the side effects of the effect type `F[_]`.
