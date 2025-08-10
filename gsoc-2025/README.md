@@ -650,7 +650,7 @@ object Coalesce:
         else if coalesced then Coalesced(start, end, profile)
         else NotCoalesced(profile)
       case ReadProfile(_, _, _) =>
-        if coalesced then Coalesced(start, end, profile)
+        if coalesced && distinct then Coalesced(start, end, profile)
         else NotCoalesced(profile)
 ```
 
