@@ -15,9 +15,12 @@
     - [fs2 filtering through Cyfra](#fs2-filtering-through-cyfra)
       - [Challenges in filter](#challenges-in-filter)
       - [Approach](#approach)
+      - [Mapping the predicate](#mapping-the-predicate)
       - [Implementing parallel prefix sum](#implementing-parallel-prefix-sum)
+        - [Upsweep](#upsweep)
+        - [Downsweep (inclusive)](#downsweep-inclusive)
       - [Implementing stream compaction](#implementing-stream-compaction)
-      - [Further work](#further-work)
+    - [Further work](#further-work)
   - [Cyfra Interpreter](#cyfra-interpreter)
     - [Progress](#progress)
     - [Simulating expressions, just one at a time](#simulating-expressions-just-one-at-a-time)
@@ -266,12 +269,31 @@ for writing GPU programs, using the redesigned runtime.
 
 ### fs2 filtering through Cyfra
 
+Here we are still using the type bridges from before, but the discussion
+will focus more on how to stitch together multiple GPU programs in Cyfra.
+
+In normal Scala land, the signature looks like this:
+
+```scala
+object GPipe:
+  // ...
+  def gPipeFilter[
+    F[_],
+    C <: Value: Tag: FromExpr,
+    S: ClassTag
+  ](predicate: C => GBoolean)(
+    using cr: CyfraRuntime,
+    bridge: Bridge[C, S]
+  ): Pipe[F, S, S] =
+    (stream: Stream[F, S]) => ???
+```
+
+#### Challenges in filter
+
 Implementing a filter method on the GPU, in parallel, is quite tricky.
 Thankfully there is good literature on the subject (although mostly in CUDA C/C++):
 
-[Parallel prefix sum](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda).
-
-#### Challenges in filter
+[Parallel prefix sum](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda)
 
 For example, let's say we want to filter even numbers:
 
@@ -303,58 +325,40 @@ List(1, 2, 4, 3, 3, 1, 4, 8, 2, 5, 7) // maps to:
 List(0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0)
 ```
 
-- Run parallel prefix sum on the result:
+- Run parallel prefix sum on the result (I opted for inclusive sum):
 
 ```scala
 List(1, 2, 4, 3, 3, 1, 4, 8, 2, 5, 7) // maps to:
 List(0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0) // scans to:
-List(0, 0, 1, 2, 2, 2, 2, 3, 4, 5, 5, 5) // (we add a 0 to the left)
+List(0, 1, 2, 2, 2, 2, 3, 4, 5, 5, 5) // these are inclusive prefix sums
 ```
 
 - The last number in the prefix sum result is the size of the filtered collection
   (in this case, 5).
-- The filtered elements are those where, in the prefix sum results,
-  the next entry is 1 greater:
+- The filtered elements are those that are, in the prefix sum results,
+  1 greater than the previous entry:
 
 ```scala
-List(1, 2, 4, 3, 3, 1, 4, 8, 2, 5, 7)    // original
-//      X  X           X  X  X           // filtered elements
-List(0, 0, 1, 2, 2, 2, 2, 3, 4, 5, 5, 5) // prefix sum
+List(1, 2, 4, 3, 3, 1, 4, 8, 2, 5, 7) // original
+//      X  X           X  X  X        // filtered elements
+List(0, 1, 2, 2, 2, 2, 3, 4, 5, 5, 5) // (inclusive) prefix sum
 ```
 
-- In the compacted final collection, *the prefix sum result becomes the index*:
+- In the compacted final collection, *the prefix sum result minus 1 becomes the index*:
 
 ```scala
-List(1, 2, 4, 3, 3, 1, 4, 8, 2, 5, 7)    // original
-//      X  X           X  X  X           // filtered elements
-List(0, 0, 1, 2, 2, 2, 2, 3, 4, 5, 5, 5) // prefix sum, gives us the indices
+List(1, 2, 4, 3, 3, 1, 4, 8, 2, 5, 7) // original
+//      X  X           X  X  X        // filtered elements
+List(0, 1, 2, 2, 2, 2, 3, 4, 5, 5, 5) // (prefix sum - 1) gives us the indices
 List(2, 4, 4, 8, 2)
-//   0  1  2  3  4: the indices come from the prefix sum
+//   0  1  2  3  4: the indices come from the prefix sum, minus 1
 ```
 
-#### Implementing parallel prefix sum
-
-Here we are still using the type bridges from before, but the discussion
-will focus more on how to stitch together multiple GPU programs in Cyfra.
-
-In normal Scala land, the signature looks like this:
-
-```scala
-object GPipe:
-  // ...
-  def gPipeFilter[
-    F[_],
-    C <: Value: Tag: FromExpr,
-    S: ClassTag
-  ](predicate: C => GBoolean)(
-    using cr: CyfraRuntime,
-    bridge: Bridge[C, S]
-  ): Pipe[F, S, S] =
-    (stream: Stream[F, S]) => ???
-```
+#### Mapping the predicate
 
 The initial portion is just like the map from before.
 We apply `predicate` to Cyfra values; but instead of `GBoolean` we'll return `Int32`.
+
 This is what Cyfra's `GProgram` API looks like; it needs definitions of memory layouts,
 the input and output buffers, their sizes as parameters, the size of a
 [workgroup](https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_WorkGroupSize.xhtml)
@@ -372,7 +376,7 @@ val predicateProgram = GProgram[Params, Layout](
 ): layout =>
   val invocId = GIO.invocationId                // each thread, or rather, GPU array index
   val element = GIO.read[C](layout.in, invocId) // read input at that index
-  val result: Int32 = when(pred(element))(1: Int32).otherwise(0)
+  val result  = when(predicate(element))(1: Int32).otherwise(0)
   GIO.write[Int32](layout.out, invocId, result) // write result to output buffer at index
 ```
 
@@ -381,13 +385,58 @@ You can read more on that in the Interpreter project below.
 
 Then this GPU program is handed to an execution handler to be performed.
 
-TODO
+#### Implementing parallel prefix sum
+
+This is one of the hardest parts of the project!
+It consists of two parts, both of which are recursive: upsweep and downsweep.
+I will illustrate with a small example of an array with 8 elements.
+For simplicity, each array position holds a value of 1:
+
+|index|  0|  1|  2|  3|  4|  5|  6|  7|
+|:---:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|value|  1|  1|  1|  1|  1|  1|  1|  1|
+
+Since $8 = 2^3$ there are 3 phases to both parts.
+In general, if the array size is $2^n$, there are $n$ phases.
+The final result of the prefix sum should be: `1, 2, 3, 4, 5, 6, 7, 8`.
+
+##### Upsweep
+
+We do some additions on subintervals recursively.
+The mid point of an interval gets added to its end point:
+
+|interval size|index|  0|  1|  2|  3|  4|  5|  6|  7|
+|:-----------:|:---:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|            2|     |  1|  1|  1|  1|  1|  1|  1|  1|
+|phase 1      |     | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 |
+|            4|     |  1|  2|  1|  2|  1|  2|  1|  2|
+|phase 2      |     |   | 🡦 |   | 🡣 |   | 🡦 |   | 🡣 |
+|            8|     |  1|  2|  1|  4|  1|  2|  1|  4|
+|phase 3      |     |   |   |   | 🡦 |   |   |   | 🡣 |
+|result       |     |  1|  2|  1|  4|  1|  2|  1|  8|
+
+TODO (Cyfra code)
+
+##### Downsweep (inclusive)
+
+Downsweep starts from the result of upsweep. Interval sizes go back in reverse.
+The end-point of an interval gets added to the mid point of the interval next to it:
+
+|interval size|index|  0|  1|  2|  3|  4|  5|  6|  7|
+|:-----------:|:---:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|4            |     |  1|  2|  1|  4|  1|  2|  1|  8|
+|phase 1      |     |   |   |   | 🡦 |   | 🡣 |   |   |
+| 2           |     |  1|  2|  1|  4|  1|  6|  1|  8|
+|phase 2      |     |   | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 |  |
+|result       |     |  1|  2|  3|  4|  5|  6|  7|  8|
+
+TODO (Cyfra code)
 
 #### Implementing stream compaction
 
 TODO
 
-#### Further work
+### Further work
 
 I would like to finish off the filter method, and implement more of fs2's streaming
 [API](https://www.javadoc.io/doc/co.fs2/fs2-docs_2.13/3.12.0/fs2/Stream.html) on Cyfra,
