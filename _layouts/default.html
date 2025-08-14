@@ -37,7 +37,7 @@
         }
         customElements.define("katex-block", KatexBlock)
       } else {
-        document.querySelectorAll("katex-inline").forEach(
+        document.querySelectorAll("k").forEach(
           (el) => {
             katex.render(el.innerText, el, { throwOnError: false, displayMode: false, macros: macros, output: "html" });
           }
