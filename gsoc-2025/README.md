@@ -400,8 +400,6 @@ Since <k-x>8 = 2^3</k-x> there are 3 phases of upsweep, 2 of downsweep.
 In general, if the array size is <k-x>2^n</k-x>, there are `n` and `n-1` phases.
 The final result of the prefix sum should be: `1, 2, 3, 4, 5, 6, 7, 8`.
 
-$$ 8 = 2^3 $$
-
 ##### Upsweep
 
 We do some additions on subintervals recursively.

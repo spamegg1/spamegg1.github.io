@@ -3,6 +3,6 @@ theme: jekyll-theme-dinky
 plugins:
   - jemoji
 
-kramdown:
-  input: GFM
-  math_engine: katex
+# kramdown:
+#   input: GFM
+#   math_engine: katex

@@ -13,47 +13,6 @@
     <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
     <![endif]-->
   {% include head-custom.html %}
-
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.13.11/dist/katex.min.css"
-    integrity="sha384-Um5gpz1odJg5Z4HAmzPtgZKdTBHZdw8S29IecapCSB31ligYPhHQZMIlWLYQGVoc" crossorigin="anonymous">
-
-  <script>
-    function renderKatex() {
-      let macros = {}
-      if (customElements) {
-        class KatexInline extends HTMLElement {
-          constructor() {
-            super();
-            katex.render(this.innerText, this, { throwOnError: false, displayMode: false, macros: macros, output: "html" });
-          }
-        }
-        customElements.define("k-x", KatexInline)
-
-        class KatexBlock extends HTMLElement {
-          constructor() {
-            super();
-            katex.render(this.innerText, this, { throwOnError: false, displayMode: true, macros: macros, output: "html" });
-          }
-        }
-        customElements.define("k-b", KatexBlock)
-      } else {
-        document.querySelectorAll("k-x").forEach(
-          (el) => {
-            katex.render(el.innerText, el, { throwOnError: false, displayMode: false, macros: macros, output: "html" });
-          }
-        )
-        document.querySelectorAll("k-b").forEach(
-          (el) => {
-            katex.render(el.innerText, el, { throwOnError: false, displayMode: true, macros: macros, output: "html" });
-          }
-        )
-      }
-    }
-  </script>
-  <!-- The loading of KaTeX is deferred to speed up page rendering -->
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.13.11/dist/katex.min.js"
-    integrity="sha384-YNHdsYkH6gMx9y3mRkmcJ2mFUjTd0qNQQvY9VYZgQd7DcN7env35GzlmFaZ23JGp" crossorigin="anonymous"
-    onload="renderKatex()"></script>
 </head>
 
 <body>
