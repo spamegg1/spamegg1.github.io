@@ -396,8 +396,8 @@ For simplicity, each array position holds a value of 1:
 |:---:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 |value|  1|  1|  1|  1|  1|  1|  1|  1|
 
-Since \(8 = 2^3\) there are 3 phases of upsweep, 2 of downsweep.
-In general, if the array size is \(2^n\), there are \(n\) and \(n-1\) phases.
+Since \\(8 = 2^3\\) there are 3 phases of upsweep, 2 of downsweep.
+In general, if the array size is \\(2^n\\), there are \\(n\\) and \\(n-1\\) phases.
 The final result of the prefix sum should be: `1, 2, 3, 4, 5, 6, 7, 8`.
 
 ##### Upsweep
