@@ -406,15 +406,15 @@ The final result of the prefix sum should be: `1, 2, 3, 4, 5, 6, 7, 8`.
 We do some additions on subintervals recursively.
 The mid point of an interval gets added to its end point:
 
-|interval size|index|  0|  1|  2|  3|  4|  5|  6|  7|
-|:-----------:|:---:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-|            2|     |  1|  1|  1|  1|  1|  1|  1|  1|
-|phase 1      |     | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 |
-|            4|     |  1|  2|  1|  2|  1|  2|  1|  2|
-|phase 2      |     |   | 🡦 |   | 🡣 |   | 🡦 |   | 🡣 |
-|            8|     |  1|  2|  1|  4|  1|  2|  1|  4|
-|phase 3      |     |   |   |   | 🡦 |   |   |   | 🡣 |
-|result       |     |  1|  2|  1|  4|  1|  2|  1|  8|
+|interval size / index|  0|  1|  2|  3|  4|  5|  6|  7|
+|:-----------:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|            2|  1|  1|  1|  1|  1|  1|  1|  1|
+|phase 1      | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 |
+|            4|  1|  2|  1|  2|  1|  2|  1|  2|
+|phase 2      |   | 🡦 |   | 🡣 |   | 🡦 |   | 🡣 |
+|            8|  1|  2|  1|  4|  1|  2|  1|  4|
+|phase 3      |   |   |   | 🡦 |   |   |   | 🡣 |
+|result       |  1|  2|  1|  4|  1|  2|  1|  8|
 
 Notice the number of additions in each phase follows the pattern <k-x>2^2, 2^1, 2^0</k-x>.
 
@@ -459,13 +459,13 @@ so we can calculate the correct addresses / indices in the target (prefix sum) a
 Downsweep starts from the result of upsweep. Interval sizes go back in reverse.
 The end-point of an interval gets added to the mid point of the interval next to it:
 
-|interval size|index|  0|  1|  2|  3|  4|  5|  6|  7|
-|:-----------:|:---:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-|4            |     |  1|  2|  1|  4|  1|  2|  1|  8|
-|phase 1      |     |   |   |   | 🡦 |   | 🡣 |   |   |
-| 2           |     |  1|  2|  1|  4|  1|  6|  1|  8|
-|phase 2      |     |   | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 |  |
-|result       |     |  1|  2|  3|  4|  5|  6|  7|  8|
+|interval size / index|  0|  1|  2|  3|  4|  5|  6|  7|
+|:-----------:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|4            |  1|  2|  1|  4|  1|  2|  1|  8|
+|phase 1      |   |   |   | 🡦 |   | 🡣 |   |   |
+| 2           |  1|  2|  1|  4|  1|  6|  1|  8|
+|phase 2      |   | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 |  |
+|result       |  1|  2|  3|  4|  5|  6|  7|  8|
 
 The numbers of additions in phases follow the pattern <k-x>2^1 - 1, 2^2 - 1, \ldots</k-x>.
 
