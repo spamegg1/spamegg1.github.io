@@ -349,9 +349,10 @@ List(0, 1, 2, 2, 2, 2, 3, 4, 5, 5, 5) // (inclusive) prefix sum
 ```scala
 List(1, 2, 4, 3, 3, 1, 4, 8, 2, 5, 7) // original
 //      X  X           X  X  X        // filtered elements
-List(0, 1, 2, 2, 2, 2, 3, 4, 5, 5, 5) // (prefix sum - 1) gives us the indices
+List(0, 1, 2, 2, 2, 2, 3, 4, 5, 5, 5) // prefix sums (inclusive),
+//      0  1           2  3  4        // minus 1
 List(2, 4, 4, 8, 2)
-//   0  1  2  3  4: the indices come from the prefix sum, minus 1
+//   0  1  2  3  4  the indices equal: prefix sums - 1
 ```
 
 #### Mapping the predicate
@@ -415,7 +416,43 @@ The mid point of an interval gets added to its end point:
 |phase 3      |     |   |   |   | 🡦 |   |   |   | 🡣 |
 |result       |     |  1|  2|  1|  4|  1|  2|  1|  8|
 
-TODO (Cyfra code)
+Notice the number of additions in each phase follows the pattern <k-x>2^2, 2^1, 2^0</k-x>.
+
+The GPU program looks something like this:
+
+```scala
+val upsweep = GProgram[Params, ScanLayout](
+  layout = params =>
+    ScanLayout(
+      intIn = GBuffer[Int32](params.inSize / params.intervalSize),
+      intOut = GBuffer[Int32](params.inSize),
+      intervalSize = GUniform(ScanArgs(params.intervalSize)),
+    ),
+  dispatch = (layout, params) =>
+    GProgram.StaticDispatch((params.inSize / params.intervalSize, 1, 1)),
+): layout =>
+  val ScanArgs(size) = layout.intervalSize.read
+  val invocId = GIO.invocationId
+  val root = invocId * size
+  val mid = root + (size / 2) - 1
+  val end = root + size - 1
+  val oldValue = GIO.read[Int32](layout.intOut, end)
+  val addValue = GIO.read[Int32](layout.intOut, mid)
+  val newValue = oldValue + addValue
+  GIO.write[Int32](layout.intOut, end, newValue)
+```
+
+Notice the input size is changed by a factor of the interval size (as in the table).
+The end point value is added to the mid point value, and the sum is written back.
+
+One new thing here is the `GUniform` type: this represents a small part of a computation
+that does not change or depend on invocation (so it is "uniform" for all invocations).
+So they are great for passing parameters and using global configuration.
+The GPU can use its memory for such values to be accessed easily and fast.
+Vulkan provides (read-only) uniform buffers for this:
+[Vulkan Buffers](https://vkguide.dev/docs/new_chapter_3/mesh_buffers/#vulkan-buffers)
+We use this to have access to the interval size during the program,
+so we can calculate the correct addresses / indices in the target (prefix sum) array.
 
 ##### Downsweep (inclusive)
 
@@ -430,7 +467,30 @@ The end-point of an interval gets added to the mid point of the interval next to
 |phase 2      |     |   | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 |  |
 |result       |     |  1|  2|  3|  4|  5|  6|  7|  8|
 
-TODO (Cyfra code)
+The numbers of additions in phases follow the pattern <k-x>2^1 - 1, 2^2 - 1, \ldots</k-x>.
+
+The GPU program looks similar, with the logic slightly adjusted:
+
+```scala
+val downsweep = GProgram[Params, ScanLayout](
+  layout = params =>
+    ScanLayout(
+      intIn = GBuffer[Int32](params.inSize / params.intervalSize),
+      intOut = GBuffer[Int32](params.inSize),
+      intervalSize = GUniform(ScanArgs(params.intervalSize)),
+    ),
+  dispatch = (layout, params) =>
+    GProgram.StaticDispatch((params.inSize / params.intervalSize, 1, 1)),
+): layout =>
+  val ScanArgs(size) = layout.intervalSize.read
+  val invocId = GIO.invocationId
+  val root = invocId * size - 1
+  val mid = root + (size / 2)
+  val oldValue = GIO.read[Int32](layout.intOut, mid)
+  val addValue = when(root > 0)(GIO.read[Int32](layout.intOut, root)).otherwise(0)
+  val newValue = oldValue + addValue
+  GIO.write[Int32](layout.intOut, mid, newValue)
+```
 
 #### Implementing stream compaction
 
