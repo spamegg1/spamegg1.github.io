@@ -6,9 +6,11 @@
 
 [Bjarne Stroustrup on the importance of Mathematics and Computer Science fundamentals](https://www.youtube.com/watch?v=-QxI-RP6-HM)
 
-:computer: I contributed a lot to [Futurecoder](https://futurecoder.io) and [OSSU CS](https://github.com/ossu/computer-science/), so check them out!
+:computer: I contributed a lot to [Cyfra](https://github.com/ComputeNode/cyfra/), [Futurecoder](https://futurecoder.io) and [OSSU CS](https://github.com/ossu/computer-science/), so check them out!
 
 :brain: Check out my [Elements of Abstract Thinking](https://github.com/spamegg1/abstract-thinking)
+
+✍️ My blog: [Spamegg's personal page](https://spamegg1.github.io)
 
 💬 Ask me about: math or code questions!
 
@@ -18,11 +20,11 @@
 
 🔭 I’m currently working on: my own combined Math + CS curriculum, focusing on deep connections and foundations, ideas, history, abstract thinking and problem solving.
 
-🌱 I’m currently learning: formalizing mathematics in [Lean4](https://lean-lang.org)
+🌱 I’m currently learning: some [GPU programming](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda)
 
-🤔 I’m looking for: suggestions with interesting and creative ideas to teach logic gates, ALU / CPU, assembly; something simpler than [Nand2Tetris](https://www.nand2tetris.org/).
+🤔 I’m looking for: nothing at the moment! Still feel free to shoot any ideas my way!
 
-:desktop_computer: I use ![Mint](mint.svg)
+:desktop_computer: I use [![Mint](mint.svg)](https://linuxmint.com)
 
 ![spamegg's GitHub stats](https://github-readme-stats-spamegg1.vercel.app/api?username=spamegg1&theme=synthwave)
 
