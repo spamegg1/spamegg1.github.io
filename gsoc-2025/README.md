@@ -407,14 +407,14 @@ We do some additions on subintervals recursively.
 The mid point of an interval gets added to its end point:
 
 |interval size / index|  0|  1|  2|  3|  4|  5|  6|  7|
-|:-----------:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-|            2|  1|  1|  1|  1|  1|  1|  1|  1|
-|phase 1      | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 |
-|            4|  1|  2|  1|  2|  1|  2|  1|  2|
-|phase 2      |   | 🡦 |   | 🡣 |   | 🡦 |   | 🡣 |
-|            8|  1|  2|  1|  4|  1|  2|  1|  4|
-|phase 3      |   |   |   | 🡦 |   |   |   | 🡣 |
-|result       |  1|  2|  1|  4|  1|  2|  1|  8|
+|:-------------------:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|                    2|  1|  1|  1|  1|  1|  1|  1|  1|
+|phase 1              | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 |
+|                    4|  1|  2|  1|  2|  1|  2|  1|  2|
+|phase 2              |   | 🡦 |   | 🡣 |   | 🡦 |   | 🡣 |
+|                    8|  1|  2|  1|  4|  1|  2|  1|  4|
+|phase 3              |   |   |   | 🡦 |   |   |   | 🡣 |
+|result               |  1|  2|  1|  4|  1|  2|  1|  8|
 
 Notice the number of additions in each phase follows the pattern <k-x>2^2, 2^1, 2^0</k-x>.
 
@@ -424,8 +424,7 @@ The GPU program looks something like this:
 val upsweep = GProgram[Params, ScanLayout](
   layout = params =>
     ScanLayout(
-      intIn = GBuffer[Int32](params.inSize / params.intervalSize),
-      intOut = GBuffer[Int32](params.inSize),
+      ints = GBuffer[Int32](params.inSize),
       intervalSize = GUniform(ScanArgs(params.intervalSize)),
     ),
   dispatch = (layout, params) =>
@@ -436,13 +435,14 @@ val upsweep = GProgram[Params, ScanLayout](
   val root = invocId * size
   val mid = root + (size / 2) - 1
   val end = root + size - 1
-  val oldValue = GIO.read[Int32](layout.intOut, end)
-  val addValue = GIO.read[Int32](layout.intOut, mid)
+  val oldValue = GIO.read[Int32](layout.ints, end)
+  val addValue = GIO.read[Int32](layout.ints, mid)
   val newValue = oldValue + addValue
-  GIO.write[Int32](layout.intOut, end, newValue)
+  GIO.write[Int32](layout.ints, end, newValue)
 ```
 
-Notice the input size is changed by a factor of the interval size (as in the table).
+Notice the dispatch size (which controls the number of invocations)
+is changed by a factor of the interval size (as in the table).
 The end point value is added to the mid point value, and the sum is written back.
 
 One new thing here is the `GUniform` type: this represents a small part of a computation
@@ -460,12 +460,12 @@ Downsweep starts from the result of upsweep. Interval sizes go back in reverse.
 The end-point of an interval gets added to the mid point of the interval next to it:
 
 |interval size / index|  0|  1|  2|  3|  4|  5|  6|  7|
-|:-----------:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-|4            |  1|  2|  1|  4|  1|  2|  1|  8|
-|phase 1      |   |   |   | 🡦 |   | 🡣 |   |   |
-| 2           |  1|  2|  1|  4|  1|  6|  1|  8|
-|phase 2      |   | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 |  |
-|result       |  1|  2|  3|  4|  5|  6|  7|  8|
+|:-------------------:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|4                    |  1|  2|  1|  4|  1|  2|  1|  8|
+|phase 1              |   |   |   | 🡦 |   | 🡣 |   |   |
+| 2                   |  1|  2|  1|  4|  1|  6|  1|  8|
+|phase 2              |   | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 |  |
+|result               |  1|  2|  3|  4|  5|  6|  7|  8|
 
 The numbers of additions in phases follow the pattern <k-x>2^1 - 1, 2^2 - 1, \ldots</k-x>.
 
@@ -475,8 +475,7 @@ The GPU program looks similar, with the logic slightly adjusted:
 val downsweep = GProgram[Params, ScanLayout](
   layout = params =>
     ScanLayout(
-      intIn = GBuffer[Int32](params.inSize / params.intervalSize),
-      intOut = GBuffer[Int32](params.inSize),
+      ints = GBuffer[Int32](params.inSize),
       intervalSize = GUniform(ScanArgs(params.intervalSize)),
     ),
   dispatch = (layout, params) =>
@@ -486,10 +485,10 @@ val downsweep = GProgram[Params, ScanLayout](
   val invocId = GIO.invocationId
   val root = invocId * size - 1
   val mid = root + (size / 2)
-  val oldValue = GIO.read[Int32](layout.intOut, mid)
-  val addValue = when(root > 0)(GIO.read[Int32](layout.intOut, root)).otherwise(0)
+  val oldValue = GIO.read[Int32](layout.ints, mid)
+  val addValue = when(root > 0)(GIO.read[Int32](layout.ints, root)).otherwise(0)
   val newValue = oldValue + addValue
-  GIO.write[Int32](layout.intOut, mid, newValue)
+  GIO.write[Int32](layout.ints, mid, newValue)
 ```
 
 #### Implementing stream compaction
