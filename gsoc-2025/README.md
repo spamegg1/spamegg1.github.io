@@ -85,7 +85,7 @@ as the Cyfra runtime was redesigned from the ground up.
 
 ## Fs2 integration
 
-Once the GSoC coding period started, I worked on how to run an fs2
+Once the coding period started, I worked on how to run an fs2
 [`Stream`](https://fs2.io/#/guide?id=building-streams) on Cyfra.
 
 Fs2 has a `Pipe` type:
@@ -259,7 +259,9 @@ stream
       ),
       onDone = layout => layout.out.read(outBuf)
     )
-    Stream.emits(bridge2.fromByteBuffer(outBuf, new Array[S2](params.inSize)))
+    val arr = new Array[S2](params.inSize)
+    val result = bridge2.fromByteBuffer(outBuf, arr)
+    Stream.emits(result)
 ```
 
 As you can see, we are using the type bridges to put the data in / out of buffers.
@@ -272,7 +274,7 @@ for writing GPU programs, using the redesigned runtime.
 Here we are still using the type bridges from before, but the discussion
 will focus more on how to stitch together multiple GPU programs in Cyfra.
 
-In normal Scala land, the signature looks like this:
+In Scala land, the signature looks like this:
 
 ```scala
 object GPipe:
@@ -291,8 +293,7 @@ object GPipe:
 #### Challenges in filter
 
 Implementing a filter method on the GPU, in parallel, is quite tricky.
-Thankfully there is good literature on the subject (although mostly in CUDA C/C++):
-
+Thankfully there is good literature on the subject (although only in CUDA C/C++):
 [Parallel prefix sum](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda)
 
 For example, let's say we want to filter even numbers:
@@ -375,7 +376,7 @@ val predicateProgram = GProgram[Params, Layout](
     ),
   dispatch = (layout, params) => GProgram.StaticDispatch((params.inSize, 1, 1)),
 ): layout =>
-  val invocId = GIO.invocationId                // each thread, or rather, GPU array index
+  val invocId = GIO.invocationId                // each "GPU thread" / array index
   val element = GIO.read[C](layout.in, invocId) // read input at that index
   val result  = when(predicate(element))(1: Int32).otherwise(0)
   GIO.write[Int32](layout.out, invocId, result) // write result to output buffer at index
@@ -467,6 +468,9 @@ The end-point of an interval gets added to the mid point of the interval next to
 |phase 2              |   | 🡦 | 🡣 | 🡦 | 🡣 | 🡦 | 🡣 |  |
 |result               |  1|  2|  3|  4|  5|  6|  7|  8|
 
+For example, in phase 1, the intervals are `1, 2, 1, 4` and `1, 2, 1, 8`.
+The end point of the first, 4, gets added to the mid point of the second, 2, for total 6.
+
 The numbers of additions in phases follow the pattern <k-x>2^1 - 1, 2^2 - 1, \ldots</k-x>.
 
 The GPU program looks similar, with the logic slightly adjusted:
@@ -483,15 +487,24 @@ val downsweep = GProgram[Params, ScanLayout](
 ): layout =>
   val ScanArgs(size) = layout.intervalSize.read
   val invocId = GIO.invocationId
-  val root = invocId * size - 1
-  val mid = root + (size / 2)
+  val end = invocId * size - 1
+  val mid = end + (size / 2)
   val oldValue = GIO.read[Int32](layout.ints, mid)
-  val addValue = when(root > 0)(GIO.read[Int32](layout.ints, root)).otherwise(0)
+  val addValue = when(end > 0)(GIO.read[Int32](layout.ints, end)).otherwise(0)
   val newValue = oldValue + addValue
   GIO.write[Int32](layout.ints, mid, newValue)
 ```
 
 #### Implementing stream compaction
+
+Here we need to stitch many program layouts together:
+
+- the initial stream of values of Cyfra type `C`, to which we applied the predicate,
+- the stream of prefix sum results,
+- the final, compacted stream.
+
+We also need to pass the total prefix sum as a parameter,
+to determine the size of the compacted stream in the layout.
 
 TODO
 
