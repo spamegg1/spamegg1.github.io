@@ -19,7 +19,9 @@
       - [Implementing parallel prefix sum](#implementing-parallel-prefix-sum)
         - [Upsweep](#upsweep)
         - [Downsweep (inclusive)](#downsweep-inclusive)
+        - [Chaining multiple stages of upsweep and downsweep](#chaining-multiple-stages-of-upsweep-and-downsweep)
       - [Implementing stream compaction](#implementing-stream-compaction)
+      - [Connecting the Layouts](#connecting-the-layouts)
     - [Further work](#further-work)
   - [Cyfra Interpreter](#cyfra-interpreter)
     - [Progress](#progress)
@@ -365,10 +367,18 @@ This is what Cyfra's `GProgram` API looks like; it needs definitions of memory l
 the input and output buffers, their sizes as parameters, the size of a
 [workgroup](https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_WorkGroupSize.xhtml)
 (static or dynamic), and so on.
+
+Each Cyfra program has a `Layout` that tracks the buffers mentioned above,
+along with necessary parameters and values. For the predicate we have:
+
+```scala
+case class PredLayout(in: GBuffer[C], out: GBuffer[Int32]) extends Layout
+```
+
 Then we provide the code in Cyfra land that is executed for each invocation in parallel:
 
 ```scala
-val predicateProgram = GProgram[Params, Layout](
+val predicateProgram = GProgram[PredParams, PredLayout](
   layout = params =>
     Layout(
       in = GBuffer[C](params.inSize),     // collection to be filtered
@@ -419,10 +429,16 @@ The mid point of an interval gets added to its end point:
 
 Notice the number of additions in each phase follows the pattern <k-x>2^2, 2^1, 2^0</k-x>.
 
-The GPU program looks something like this:
+We need a layout. Since we are updating in-place, one buffer will do:
 
 ```scala
-val upsweep = GProgram[Params, ScanLayout](
+case class ScanLayout(ints: GBuffer[Int32], intervalSize: GUniform[ScanArgs]) extends Layout
+```
+
+Then the GPU program looks something like this:
+
+```scala
+val upsweep = GProgram[ScanParams, ScanLayout](
   layout = params =>
     ScanLayout(
       ints = GBuffer[Int32](params.inSize),
@@ -495,22 +511,123 @@ val downsweep = GProgram[Params, ScanLayout](
   GIO.write[Int32](layout.ints, mid, newValue)
 ```
 
+##### Chaining multiple stages of upsweep and downsweep
+
+We need to create multiple executions of upsweep one after the other,
+with the changes in interval sizes reflected correctly:
+
+```scala
+// Stitch together many upsweep / downsweep program phases recursively
+@annotation.tailrec
+def upsweepPhases(
+  exec: GExecution[ScanParams, ScanLayout, ScanLayout],
+  inSize: Int,
+  intervalSize: Int,
+): GExecution[ScanParams, ScanLayout, ScanLayout] =
+  if intervalSize >= inSize then exec
+  else
+    val newExec = exec.addProgram(upsweep)(params => ScanParams(inSize, intervalSize), layout => layout)
+    upsweepPhases(newExec, inSize, intervalSize * 2)
+
+@annotation.tailrec
+def downsweepPhases(
+  exec: GExecution[ScanParams, ScanLayout, ScanLayout],
+  inSize: Int,
+  intervalSize: Int,
+): GExecution[ScanParams, ScanLayout, ScanLayout] =
+  if intervalSize < 2 then exec
+  else
+    val newExec = exec.addProgram(downsweep)(params => ScanParams(inSize, intervalSize), layout => layout)
+    downsweepPhases(newExec, inSize, intervalSize / 2)
+
+val initExec = GExecution[ScanParams, ScanLayout]() // no program
+val upsweepExec = upsweepPhases(initExec, 256, 2) // add all upsweep phases
+val scanExec = downsweepPhases(upsweepExec, 256, 128) // add all downsweep phases
+```
+
 #### Implementing stream compaction
 
-Here we need to stitch many program layouts together:
+Here we need to use three buffers together:
 
 - the initial stream of values of Cyfra type `C`, to which we applied the predicate,
-- the stream of prefix sum results,
-- the final, compacted stream.
+- the stream of prefix sum results (Cyfra type `Int32`),
+- the final, compacted stream (again, Cyfra type `C`).
 
-We also need to pass the total prefix sum as a parameter,
-to determine the size of the compacted stream in the layout.
+So we have the appropriate layout:
 
-TODO
+```scala
+case class CompactLayout(in: GBuffer[C], scan: GBuffer[Int32], out: GBuffer[C]) extends Layout
+```
+
+We take the initial stream and the prefixsum results, also provide an output stream:
+
+```scala
+val compactProgram = GProgram[CompactParams, CompactLayout](
+  layout = params => CompactLayout(
+    in = GBuffer[C](params.inSize),
+    scan = GBuffer[Int32](params.inSize),
+    out = GBuffer[C](params.inSize)
+  ),
+  dispatch = (layout, params) => GProgram.StaticDispatch((params.inSize, 1, 1)),
+): layout =>
+  val invocId = GIO.invocationId
+  val element = GIO.read[C](layout.in, invocId)
+  val prefixSum = GIO.read[Int32](layout.scan, invocId)
+  val prevScan = when(invocId > 0)(GIO.read[Int32](layout.scan, invocId - 1)).otherwise(prefixSum)
+  val condt = when(invocId > 0)(when(prevScan < prefixSum)(1: Int32).otherwise(0)).otherwise(when(prefixSum > 0)(1: Int32).otherwise(0))
+  val index = when(invocId > 0)(when(prevScan < prefixSum)(prevScan).otherwise(0)).otherwise(0)
+  GIO.repeat(condt): _ =>
+    GIO.write[C](layout.out, index, element)
+```
+
+There is a small issue here: we need to do a conditional operation:
+"if the prefixsum is 1 greater than previous, then write that element to the
+correct index, otherwise do nothing".
+
+Unfortunately `GProgram` does not (yet!) support a conditional `GIO` like that
+(it will be implemented in the future), so we work around it with `GIO.repeat`:
+if the condition is met, we "repeat" the code 1 time, otherwise 0 times.
+
+Another issue is the size of the compacted stream. It should be smaller, but it remains
+the same size. This is because on the GPU we cannot create blocks of size of our own
+choice; Vulkan works with blocks of sizes that are multiples of 256. The rest of the
+buffer will be filled with 0s by default. Ideally we would run the filter program on an
+input of very large size so that it's worth doing; in the future we might have some logic
+that takes the filtered sections of many blocks and puts them together.
+
+#### Connecting the Layouts
+
+To use multiple programs we need to "stitch" their layouts together. This is quite tricky:
+
+```scala
+case class FilterLayout(in: GBuffer[C], scan: GBuffer[Int32], out: GBuffer[C], intervalSize: GUniform[ScanArgs]) extends Layout
+
+val filterExec = GExecution[FilterParams, FilterLayout]() // no program
+  .addProgram(predicateProgram)( // add predicate mapping program
+    filterParams => PredParams(filterParams.inSize),
+    filterLayout => PredLayout(in = filterLayout.in, out = filterLayout.scan),
+  )
+  .flatMap[FilterLayout, FilterParams]: filterLayout =>
+    scanExec // add scan (prefixsum) program, match the layout correctly
+      .contramap[FilterLayout]: filterLayout =>
+        ScanLayout(filterLayout.scan, filterLayout.intervalSize)
+      .contramapParams[FilterParams](filterParams => ScanParams(filterParams.inSize, filterParams.intervalSize))
+      .map(scanLayout => filterLayout)
+  .flatMap[FilterLayout, FilterParams]: filterLayout =>
+    compactProgram // add compaction program, match the layout correctly
+      .contramap[FilterLayout]: filterLayout =>
+        CompactLayout(filterLayout.in, filterLayout.scan, filterLayout.out)
+      .contramapParams[FilterParams](filterParams => CompactParams(filterParams.inSize))
+      .map(compactLayout => filterLayout)
+```
+
+The final layout needs to accomodate all the previous program layouts.
+The `.flatMap` method of `GExecution` allows us to sequence multiple executions.
+The code looks very scary! `contramap` is a bit like "backwards map".
 
 ### Further work
 
-I would like to finish off the filter method, and implement more of fs2's streaming
+I would like to implement more of fs2's streaming
 [API](https://www.javadoc.io/doc/co.fs2/fs2-docs_2.13/3.12.0/fs2/Stream.html) on Cyfra,
 adding more methods. This can be very tricky as we saw with the filter example.
 
@@ -966,8 +1083,9 @@ It is helpful to track the periods of idleness, which expression it happens on,
 for which invocation, and for how long (and redesign our `Record` to include this):
 
 ```scala
-case class Record(cache: Cache, writes: List[Write], reads: List[Read], idles: List[Idle])
-case class Idle(treeid: TreeId, invocId: InvocId, length: Int)
+type IdleDuration = Int
+type Idles = Map[TreeId, IdleDuration] // which expression idles, for how long
+case class Record(cache: Cache, writes: List[Write], reads: List[Read], idles: Idles)
 ```
 
 We add the necessary logic to the simulator, where `WhenExpr` is simulated.
