@@ -578,38 +578,48 @@ case class CompactLayout(
 ) extends Layout
 ```
 
-We take the initial stream and the prefixsum results, also provide an output stream:
-
-```scala
-val compactProgram = GProgram[CompactParams, CompactLayout](
-  layout = params => CompactLayout(
-    in = GBuffer[C](params.inSize),
-    scan = GBuffer[Int32](params.inSize),
-    out = GBuffer[C](params.inSize)
-  ),
-  dispatch = (layout, params) => GProgram.StaticDispatch((params.inSize, 1, 1)),
-): layout =>
-  val invocId = GIO.invocationId
-  val element = GIO.read[C](layout.in, invocId)
-  val prefixSum = GIO.read[Int32](layout.scan, invocId)
-  val prevScan = when(invocId > 0)(GIO.read[Int32](layout.scan, invocId - 1))
-    .otherwise(prefixSum)
-  val condt = when(invocId > 0)(when(prevScan < prefixSum)(1: Int32).otherwise(0))
-    .otherwise(when(prefixSum > 0)(1: Int32).otherwise(0))
-  val index = when(invocId > 0)(when(prevScan < prefixSum)(prevScan).otherwise(0))
-    .otherwise(0)
-  GIO.repeat(condt): _ =>
-    GIO.write[C](layout.out, index, element)
-```
-
 There is a small issue here: we need to do a conditional operation:
 "if the prefixsum is 1 greater than previous, then write that element to the
 correct index, otherwise do nothing". This also depends on whether the previous prefixsum
 is available (if we are checking a non-zero index), hence nested conditions.
 
-Unfortunately `GProgram` does not (yet!) support a conditional `GIO` like that
-(it will be implemented in the future), so we work around it with `GIO.repeat`:
-if the condition is met, we "repeat" the code 1 time, otherwise 0 times.
+Cyfra did not have a conditional `GIO` like that,
+so I implemented a workaround using `GIO.repeat`.
+If the condition is met, we "repeat" the code 1 time, otherwise 0 times:
+
+```scala
+object GIO:
+  // ...
+  def when(cond: GBoolean)(thenCode: GIO[?]): GIO[Unit] =
+    val n = When.when(cond)(1: Int32).otherwise(0)
+    repeat(n)(_ => thenCode)
+```
+
+We take the initial stream and the prefixsum results, also provide an output stream:
+
+```scala
+val compactProgram = GProgram[CompactParams, CompactLayout](
+  layout = params => CompactLayout(in = GBuffer[C](params.inSize), scan = GBuffer[Int32](params.inSize), out = GBuffer[C](params.inSize)),
+  dispatch = (layout, params) => GProgram.StaticDispatch((params.inSize, 1, 1)),
+): layout =>
+  val invocId = GIO.invocationId
+  val element = GIO.read[C](layout.in, invocId)
+  val prefixSum = GIO.read[Int32](layout.scan, invocId)
+  for
+    _ <- GIO.when(invocId > 0):
+      val prevScan = GIO.read[Int32](layout.scan, invocId - 1)
+      GIO.when(prevScan < prefixSum):
+        GIO.write(layout.out, prevScan, element)
+    _ <- GIO.when(invocId === 0):
+      GIO.when(prefixSum > 0):
+        GIO.write(layout.out, invocId, element)
+  yield ()
+```
+
+Notice that we can use a typical Scala for-expression here, since `GIO` has a `.flatMap`
+method, and is therefore a normal Scala monad. We return the unit value `()`
+since writing is just a side effect, so we end up with `GIO[Unit]` in the end.
+Now it looks a bit more like a normal if/else block.
 
 Another issue is the size of the compacted stream. It should be smaller, but it remains
 the same size. This is because on the GPU we cannot create blocks of size of our own
