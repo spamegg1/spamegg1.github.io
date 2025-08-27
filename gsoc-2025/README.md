@@ -39,7 +39,8 @@
 I participated in 2025's Google Summer of Code,
 to contribute to [Cyfra](https://github.com/ComputeNode/cyfra/).
 
-Cyfra is a DSL (in Scala 3) and runtime to do general programming on the GPU.
+Cyfra is a DSL (in [Scala 3](https://www.scala-lang.org/))
+and runtime to do general programming on the GPU.
 It compiles its DSL to SPIR-V assembly and runs it via Vulkan runtime on GPUs.
 
 ## Where is the code?
@@ -113,7 +114,7 @@ To get a better idea, look at this basic unit test:
 test("fs2 through gPipeMap, just ints"):
   val inSeq = (0 until 256).toSeq                  // just some numbers
   val stream = Stream.emits(inSeq)                 // fs2 stream
-  val pipe = gPipeMap[Pure, Int32, Int](_ + 1)     // Cyfra pipe, done on GPU
+  val pipe = GPipe.map[Pure, Int32, Int](_ + 1)    // Cyfra pipe, done on GPU
   val result = stream.through(pipe).compile.toList // resulting fs2 stream
   val expected = inSeq.map(_ + 1)                  // same, on Scala/CPU, for comparison
   result
@@ -196,6 +197,8 @@ of these bridges to be used implicitly. That's how Scala handles type classes.
 For example, we have these few basic bridges between Cyfra and Scala types:
 
 ```scala
+type fRGBA = (Float, Float, Float, Float)
+
 // left: Cyfra type, right: Scala type
 given Bridge[Int32, Int]:
   def toByteBuffer(inBuf: ByteBuffer, chunk: Chunk[Int]): ByteBuffer =
@@ -234,7 +237,7 @@ The type signature looks very scary, but it's actually not that bad:
 
 ```scala
 object GPipe:
-  def gPipeMap[
+  def map[
     F[_],
     C1 <: Value: FromExpr: Tag,
     C2 <: Value: FromExpr: Tag,
@@ -281,7 +284,7 @@ In Scala land, the signature looks like this:
 ```scala
 object GPipe:
   // ...
-  def gPipeFilter[
+  def filter[
     F[_],
     C <: Value: Tag: FromExpr,
     S: ClassTag
@@ -368,11 +371,14 @@ the input and output buffers, their sizes as parameters, the size of a
 [workgroup](https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_WorkGroupSize.xhtml)
 (static or dynamic), and so on.
 
-Each Cyfra program has a `Layout` that tracks the buffers mentioned above,
+Each Cyfra program has a memory `Layout` that tracks the buffers mentioned above,
 along with necessary parameters and values. For the predicate we have:
 
 ```scala
-case class PredLayout(in: GBuffer[C], out: GBuffer[Int32]) extends Layout
+case class PredLayout(
+  in: GBuffer[C],
+  out: GBuffer[Int32]
+) extends Layout
 ```
 
 Then we provide the code in Cyfra land that is executed for each invocation in parallel:
@@ -432,7 +438,10 @@ Notice the number of additions in each phase follows the pattern <k-x>2^2, 2^1, 
 We need a layout. Since we are updating in-place, one buffer will do:
 
 ```scala
-case class ScanLayout(ints: GBuffer[Int32], intervalSize: GUniform[ScanArgs]) extends Layout
+case class ScanLayout(
+  ints: GBuffer[Int32],
+  intervalSize: GUniform[ScanArgs]
+) extends Layout
 ```
 
 Then the GPU program looks something like this:
@@ -513,7 +522,7 @@ val downsweep = GProgram[Params, ScanLayout](
 
 ##### Chaining multiple stages of upsweep and downsweep
 
-We need to create multiple executions of upsweep one after the other,
+We need to create multiple executions of upsweep and downsweep one after the other,
 with the changes in interval sizes reflected correctly:
 
 ```scala
@@ -526,7 +535,10 @@ def upsweepPhases(
 ): GExecution[ScanParams, ScanLayout, ScanLayout] =
   if intervalSize >= inSize then exec
   else
-    val newExec = exec.addProgram(upsweep)(params => ScanParams(inSize, intervalSize), layout => layout)
+    val newExec = exec.addProgram(upsweep)(
+      params => ScanParams(inSize, intervalSize),
+      layout => layout
+    )
     upsweepPhases(newExec, inSize, intervalSize * 2)
 
 @annotation.tailrec
@@ -537,7 +549,10 @@ def downsweepPhases(
 ): GExecution[ScanParams, ScanLayout, ScanLayout] =
   if intervalSize < 2 then exec
   else
-    val newExec = exec.addProgram(downsweep)(params => ScanParams(inSize, intervalSize), layout => layout)
+    val newExec = exec.addProgram(downsweep)(
+      params => ScanParams(inSize, intervalSize),
+      layout => layout
+    )
     downsweepPhases(newExec, inSize, intervalSize / 2)
 
 val initExec = GExecution[ScanParams, ScanLayout]() // no program
@@ -556,7 +571,11 @@ Here we need to use three buffers together:
 So we have the appropriate layout:
 
 ```scala
-case class CompactLayout(in: GBuffer[C], scan: GBuffer[Int32], out: GBuffer[C]) extends Layout
+case class CompactLayout(
+  in: GBuffer[C],
+  scan: GBuffer[Int32],
+  out: GBuffer[C]
+) extends Layout
 ```
 
 We take the initial stream and the prefixsum results, also provide an output stream:
@@ -573,16 +592,20 @@ val compactProgram = GProgram[CompactParams, CompactLayout](
   val invocId = GIO.invocationId
   val element = GIO.read[C](layout.in, invocId)
   val prefixSum = GIO.read[Int32](layout.scan, invocId)
-  val prevScan = when(invocId > 0)(GIO.read[Int32](layout.scan, invocId - 1)).otherwise(prefixSum)
-  val condt = when(invocId > 0)(when(prevScan < prefixSum)(1: Int32).otherwise(0)).otherwise(when(prefixSum > 0)(1: Int32).otherwise(0))
-  val index = when(invocId > 0)(when(prevScan < prefixSum)(prevScan).otherwise(0)).otherwise(0)
+  val prevScan = when(invocId > 0)(GIO.read[Int32](layout.scan, invocId - 1))
+    .otherwise(prefixSum)
+  val condt = when(invocId > 0)(when(prevScan < prefixSum)(1: Int32).otherwise(0))
+    .otherwise(when(prefixSum > 0)(1: Int32).otherwise(0))
+  val index = when(invocId > 0)(when(prevScan < prefixSum)(prevScan).otherwise(0))
+    .otherwise(0)
   GIO.repeat(condt): _ =>
     GIO.write[C](layout.out, index, element)
 ```
 
 There is a small issue here: we need to do a conditional operation:
 "if the prefixsum is 1 greater than previous, then write that element to the
-correct index, otherwise do nothing".
+correct index, otherwise do nothing". This also depends on whether the previous prefixsum
+is available (if we are checking a non-zero index), hence nested conditions.
 
 Unfortunately `GProgram` does not (yet!) support a conditional `GIO` like that
 (it will be implemented in the future), so we work around it with `GIO.repeat`:
@@ -600,7 +623,12 @@ that takes the filtered sections of many blocks and puts them together.
 To use multiple programs we need to "stitch" their layouts together. This is quite tricky:
 
 ```scala
-case class FilterLayout(in: GBuffer[C], scan: GBuffer[Int32], out: GBuffer[C], intervalSize: GUniform[ScanArgs]) extends Layout
+case class FilterLayout(
+  in: GBuffer[C],
+  scan: GBuffer[Int32],
+  out: GBuffer[C],
+  intervalSize: GUniform[ScanArgs]
+) extends Layout
 
 val filterExec = GExecution[FilterParams, FilterLayout]() // no program
   .addProgram(predicateProgram)( // add predicate mapping program
@@ -623,7 +651,7 @@ val filterExec = GExecution[FilterParams, FilterLayout]() // no program
 
 The final layout needs to accomodate all the previous program layouts.
 The `.flatMap` method of `GExecution` allows us to sequence multiple executions.
-The code looks very scary! `contramap` is a bit like "backwards map".
+The code looks very scary! `contramap` is a bit like a "backwards map".
 
 ### Further work
 
