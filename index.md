@@ -21,6 +21,7 @@
 🔭 I’m currently working on: my own combined Math + CS curriculum, focusing on deep connections and foundations, ideas, history, abstract thinking and problem solving.
 
 🌱 I’m currently learning: some [GPU programming](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda)
+and [coding logic](https://github.com/gapt/gapt)
 
 🤔 I’m looking for: nothing at the moment! Still feel free to shoot any ideas my way!
 
