@@ -533,7 +533,7 @@ def upsweepPhases(
   inSize: Int,
   intervalSize: Int,
 ): GExecution[ScanParams, ScanLayout, ScanLayout] =
-  if intervalSize >= inSize then exec
+  if intervalSize > inSize then exec
   else
     val newExec = exec.addProgram(upsweep)(
       params => ScanParams(inSize, intervalSize),
