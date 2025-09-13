@@ -7,6 +7,8 @@ and overgrown ivy roots. It was in very bad shape:
 
 ![00-bad-shape](00-bad-shape.jpg)
 
+- The whole you see there was actually my bedroom! Along with rats and scorpion friends.
+
 ![00-covered-in-ivy](00-covered-in-ivy.jpg)
 
 ![00-garbage](00-garbage.jpg)
@@ -113,3 +115,11 @@ and overgrown ivy roots. It was in very bad shape:
 - A bountiful harvest:
 
 ![25](25-mint-parsley-tomato-cucumber-harvest.jpg)
+
+- Corn did not turn out so well; they are very small, but quite tasty.
+
+![26](26-corn-harvest.jpg)
+
+- An absolutely GINORMOUS cucumber!
+
+![27](27-ginormous-cucumber.jpg)
