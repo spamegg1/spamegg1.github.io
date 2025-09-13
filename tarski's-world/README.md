@@ -11,7 +11,21 @@ So far I have a crude approximation, but most code logic is in place:
 
 ## Model, View, Controller
 
-- ???
+### Data: model or view?
+
+### Controller: rendering
+
+### Controller: mouse input
+
+## Converters
+
+### Conditional givens, extension methods
+
+### Converting conditionally with givens
+
+### Deferred givens?
+
+### Ad-hoc (typeclass) vs. subtype (inheritance) polymorphism
 
 ## Work in progress
 
