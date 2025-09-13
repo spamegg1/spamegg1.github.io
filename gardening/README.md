@@ -1,5 +1,18 @@
 # Gardening
 
+## Childhood in ruins
+
+In 2024-25, I rescued my now abandoned childhood home from garbage, debris,
+and overgrown ivy roots. It was in very bad shape:
+
+![00-bad-shape](00-bad-shape.jpg)
+
+![00-covered-in-ivy](00-covered-in-ivy.jpg)
+
+![00-garbage](00-garbage.jpg)
+
+## Then good things happened
+
 - Potato plants, still early and small:
 
 ![01](01-potato-small.jpg)
