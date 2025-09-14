@@ -180,7 +180,7 @@ val H2  = hof"∀x ∃y ∀z x(z) = y(y(z))"
 ```
 
 Here `fof` is "first order formula", `fot` is "first order term" and
-`hof` is "higher order formula".
+`hof` is "higher order formula". Notice the interpolated `$t` inside a string.
 `!` and `?` are alternative syntax for `∀` "for all" and `∃` "there exists".
 
 But it also allows full pattern matching all the way down to the atoms:
@@ -214,11 +214,98 @@ I reorganized the repository, at this point I still have grammar but no controll
 
 ### Data: model or view? It's philosophical
 
+The original Tarski's world software actually does have two different "views":
+
+![2D](2D-view.png)
+
+![3D](3D-view.png)
+
+But I am not interested in the 3D view; not only it's very difficult to implement,
+but it is also not very usable, making it hard to see objects and locations well.
+
+So what does "view" mean for me in this case?
+It's got something to do with... visuals, right? I have a `Block` class:
+
+```scala
+case class Block(
+    size: Double, // Small, Medium, Large
+    shape: Shape, // Tri, Squ, Cir
+    color: Color, // Blue, Black, Grey
+    label: String = ""
+)
+```
+
+That's all visual stuff, so it should be in the View right?
+But wait, isn't this *just data*? So it should be part of the Model then?
+Since I don't actually have different views, I am leaning in the first direction.
+So, for me, View = "visual data and related stuff".
+
+Seems like even in the broader software world there really is no consensus.
+There are many variants like model-view-presenter, model-view-adapter,
+model-template-view, and even... *model-view-viewmodel*! 🤣 Yeah, sure guys.
+Dana Moore says in "Professional Rich Internet Applications: Ajax and Beyond (2007)" that
+
+> "Since the origin of MVC, there have been many interpretations of the pattern.
+> The concept has been adapted and applied in very different ways
+> to a wide variety of systems and architectures."
+
+So I believe ***I do have permission to interpret things in my own way.***
+I mean, all this software design / pattern / architecture stuff can get very vague.
+Without pinning it down to a specific problem and seeing what comes up,
+it's impossible to adhere to some predetermined pattern and its "laws".
+
+In fact, even the names of the components are used differently.
+For example, in Django, Controller is called "view" and View is called "template":
+[Django FAQ](https://docs.djangoproject.com/en/5.1/faq/general/)
+
+To quote them on this issue:
+
+> Well, the standard names are debatable. In our interpretation of MVC, the “view”
+> describes the data that gets presented to the user. It’s not necessarily how the data
+> looks, but which data is presented. The view describes *which data you see*,
+> not *how you see it*. It’s a subtle distinction.
+
+I do have to admit, this stuff gets *very philosophical!*
+
+### Domain analysis: thinking naively and deciding the components
+
+If I look at Tarski's world and think about it, allowing myself to interpret MVC freely,
+I can try to decide what goes where:
+
+![full-GUI](full-GUI.png)
+
+I think Model is like a database. (in Django and Rails, it actually is!)
+It could include:
+
+- the chess board as a grid, with blocks (actual data) placed on it
+- the current state: which names are occupied by objects, etc.
+- receive commands from Controller to CRUD the blocks database
+
+View could include:
+
+- the definition / description of blocks (but not the actual data),
+- things like shape, color, size, etc.
+- all the graphically relevant constants (board size, number of rows and columns etc.)
+- the definition / description of formula displays
+- the definition / description of the UI, buttons, etc.
+
+Controller could include functionality like:
+
+- receive a mouse click to add / remove / move a block
+  - tell Model to update
+  - these have to ***convert*** the cursor position to grid position
+- receive a mouse click to add / remove a name to / from an object (tell Model to update)
+- receive a mouse click to evaluate formulas
+  - call Interpreter with data from Model
+  - then use View to display them, etc.
+
 ## World design
 
 ### Implementing the world
 
-### Implementing the interpreter, evaluating formulas in worlds
+## Implementing the interpreter
+
+### Evaluating formulas in worlds
 
 ## Controller
 
