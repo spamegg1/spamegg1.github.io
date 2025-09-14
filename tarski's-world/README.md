@@ -278,16 +278,18 @@ I think Model is like a database. (in Django and Rails, it actually is!)
 It could include:
 
 - the chess board as a grid, with blocks (actual data) placed on it
+  - receive commands from Controller to add / remove / move blocks in the database
 - the current state: which names are occupied by objects, etc.
-- receive commands from Controller to CRUD the blocks database
+  - receive commands from Controller to change this state
 
 View could include:
 
-- the definition / description of blocks (but not the actual data),
-- things like shape, color, size, etc.
 - all the graphically relevant constants (board size, number of rows and columns etc.)
-- the definition / description of formula displays
-- the definition / description of the UI, buttons, etc.
+- the description of blocks (but not the actual data)
+  - things like shape, color, size, etc.
+- the description of formula displays
+- the description of the UI, buttons, etc.
+- For each description, also the mechanism to convert data to an image
 
 Controller could include functionality like:
 
@@ -297,15 +299,55 @@ Controller could include functionality like:
 - receive a mouse click to add / remove a name to / from an object (tell Model to update)
 - receive a mouse click to evaluate formulas
   - call Interpreter with data from Model
-  - then use View to display them, etc.
+  - then use View's mechanism to convert them to images to display them
 
-## World design
+This naive approach is probably violating some rules about the separation of Model, View
+and Controller and how they are supposed to interact, but oh well. Let's go!
+
+## World (model, data) design
 
 ### Implementing the world
 
-## Implementing the interpreter
+## Interpreter
+
+Here we are not concerned with recursion depth, stack overflow, or performance.
+The evaluated formulas will be dead simple, and the worlds will be very small.
 
 ### Evaluating formulas in worlds
+
+We only need the blocks from a world. The logical connective part is very easy:
+
+```scala
+def eval(formula: FOLFormula)(using blocks: Blocks): Boolean = formula match
+  case a: FOLAtom => evalAtom(a)
+  case And(a, b)  => eval(a) && eval(b)
+  case Or(a, b)   => eval(a) || eval(b)
+  case Neg(a)     => !eval(a)
+  case Imp(a, b)  => if eval(a) then eval(b) else true
+  case Iff(a: FOLFormula, b: FOLFormula) =>
+    val (ea, eb) = (eval(a), eval(b))
+    ea && eb || !ea && !eb
+  case All(x, f) => blocks.keys.forall(name => eval(f.substitute(x, FOLConst(name))))
+  case Ex(x, f)  => blocks.keys.exists(name => eval(f.substitute(x, FOLConst(name))))
+```
+
+The most interesting parts are the quantifiers. Here, the variable substitution problem
+I mentioned earlier is neatly solved by the Gapt library.
+
+The atomic formula part is more tedious. It's much longer, here are just a few cases:
+
+```scala
+private def evalAtom(a: FOLAtom)(using b: Blocks): Boolean = a match
+  case FOLAtom("Small", Seq(FOLConst(c)))                => b(c).block.size == Small
+  case FOLAtom("Triangle", Seq(FOLConst(c)))             => b(c).block.shape == Tri
+  case FOLAtom("Green", Seq(FOLConst(c)))                => b(c).block.color == Green
+  case FOLAtom("LeftOf", Seq(FOLConst(c), FOLConst(d)))  => b(c).pos.leftOf(b(d).pos)
+  case FOLAtom("Smaller", Seq(FOLConst(c), FOLConst(d))) => b(c).block.smaller(b(d).block)
+  case FOLAtom("Larger", Seq(FOLConst(c), FOLConst(d)))  => b(c).block.larger(b(d).block)
+  case FOLAtom("=", Seq(FOLConst(c), FOLConst(d)))       => b(c).block == b(d).block
+  case FOLAtom("SameRow", Seq(FOLConst(c), FOLConst(d))) => b(c).pos.sameRow(b(d).pos)
+  // ...
+```
 
 ## Controller
 
