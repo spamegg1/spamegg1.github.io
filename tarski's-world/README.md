@@ -334,7 +334,9 @@ ah well, at this point it's all semantics, who cares 🤷 I'll come up with some
 ### Grid positions
 
 Very basic 2D grid stuff. I need to implement Tarski's world atomic formulas such as
-`FrontOf`, `BackOf`, `LeftOf`, `RightOf` etc. Once again, named tuples:
+`FrontOf`, `BackOf`, `LeftOf`, `RightOf` etc.
+
+Here we are using Scala's new feature [named tuples](https://www.scala-lang.org/api/current/docs/other-new-features/named-tuples.html):
 
 ```scala
 type Pos = (row: Int, col: Int)
@@ -397,7 +399,7 @@ So I ended up with a compromise of having TWO maps.
 The downside is that BOTH maps have to be updated every time something changes.
 I will use a proper relational database later, I promise!
 
-Here we are using Scala's new feature [named tuples](https://www.scala-lang.org/api/current/docs/other-new-features/named-tuples.html):
+Once again, named tuples:
 
 ```scala
 type Grid   = Map[Pos, (block: Block, name: Name)]
