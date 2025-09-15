@@ -266,6 +266,8 @@ To quote them on this issue:
 > not *how you see it*. It’s a subtle distinction.
 
 I do have to admit, this stuff gets *very philosophical!*
+If I say "this block is *blue*", is that "what you see" or "how you see it"?
+I think I agree with them, it's which data I see, so I will go with that.
 
 ### Domain analysis: thinking naively and deciding the components
 
@@ -304,9 +306,212 @@ Controller could include functionality like:
 This naive approach is probably violating some rules about the separation of Model, View
 and Controller and how they are supposed to interact, but oh well. Let's go!
 
+### Single responsibility, or "single place" for a responsibility
+
+With this design the job of displaying objects is somewhat split into two,
+and distributed between View and Controller:
+
+- the View converts a single block to a single image,
+- the Controller gets all the individual images and puts them together.
+
+Now there is a well known principle called the "Single Responsibility Principle"
+which is part of the SOLID principles. I was thinking that there might be a similar
+principle, like "the code and logic for a single functionality or
+responsibility should all be in a single place, not spread out all over the place."
+Not sure if there is one, or what it might be called? Anyway, I am violating it! 😆
+
+It does make sense for View to convert a `Block` to an `Image` since how a block looks
+is independent of everything else, looks the same no matter where it is.
+
+But maybe the "rendering all the blocks" logic could be moved into View too?
+Then View would have to talk to Model directly instead of through the Controller...
+Or View would ask Controller for the blocks, Controller would ask Model,
+get them from Model, then hand it over to View...
+ah well, at this point it's all semantics, who cares 🤷 I'll come up with something.
+
 ## World (model, data) design
 
+### Grid positions
+
+Very basic 2D grid stuff. I need to implement Tarski's world atomic formulas such as
+`FrontOf`, `BackOf`, `LeftOf`, `RightOf` etc. Once again, named tuples:
+
+```scala
+type Pos = (row: Int, col: Int)
+
+extension (p: Pos)
+  def neighbors = Seq(
+    (p.row - 1, p.col),
+    (p.row + 1, p.col),
+    (p.row, p.col - 1),
+    (p.row, p.col + 1)
+  )
+
+  def leftOf(q: Pos)  = p.col < q.col
+  def rightOf(q: Pos) = p.col > q.col
+  def frontOf(q: Pos) = p.row > q.row
+  def backOf(q: Pos)  = p.row < q.row
+  def sameRow(q: Pos) = p.row == q.row
+  def sameCol(q: Pos) = p.col == q.col
+  def adjoins(q: Pos) = p.neighbors.contains(q)
+```
+
+But Tarski's world has a predicate named `Between` which is quite complicated!
+Three blocks could be on the same row, the same column, or the same diagonal.
+Moreover they can be in various orders. It's quite annoying to check!
+
+```scala
+extension (p: Pos)
+  // ...
+  def sameRow2(q: Pos, r: Pos) = p.sameRow(q) && p.sameRow(r)
+  def sameCol2(q: Pos, r: Pos) = p.sameCol(q) && p.sameCol(r)
+  def rowBtw(q: Pos, r: Pos)   = q.backOf(p) && p.backOf(r)
+  def colBtw(q: Pos, r: Pos)   = q.leftOf(p) && p.leftOf(r)
+  def rowBtw2(q: Pos, r: Pos)  = p.rowBtw(q, r) || p.rowBtw(r, q)
+  def colBtw2(q: Pos, r: Pos)  = p.colBtw(q, r) || p.colBtw(r, q)
+  def botDiag(q: Pos, r: Pos)  = p.colBtw(q, r) && p.rowBtw(r, q)
+  def topDiag(q: Pos, r: Pos)  = p.colBtw(q, r) && p.rowBtw(q, r)
+  def botDiag2(q: Pos, r: Pos) = p.botDiag(q, r) || p.botDiag(r, q)
+  def topDiag2(q: Pos, r: Pos) = p.topDiag(q, r) || p.topDiag(r, q)
+  def diagBtw(q: Pos, r: Pos)  = p.botDiag2(q, r) || p.topDiag2(q, r)
+  def between(q: Pos, r: Pos) =
+    p.sameRow2(q, r) && p.colBtw2(q, r) ||
+      p.sameCol2(q, r) && p.rowBtw2(q, r) ||
+      p.diagBtw(q, r)
+```
+
+### Map data structures, key / value pairs, lookups
+
+Considering the interactions above, I would need a way to:
+
+- look up a block by grid position (to add/remove blocks on the board)
+- look up a block by label (to evaluate formulas that use its label)
+
+This is an annoying situation, because I need a "multi-key map"
+where the same value has multiple, differently typed keys.
+I did some searching online. There are multi-value maps,
+multi-key maps of the same type, but not quite what I need.
+
+I guess what I *really* need here is a relational database... but screw that!
+So I ended up with a compromise of having TWO maps.
+The downside is that BOTH maps have to be updated every time something changes.
+I will use a proper relational database later, I promise!
+
+Here we are using Scala's new feature [named tuples](https://www.scala-lang.org/api/current/docs/other-new-features/named-tuples.html):
+
+```scala
+type Grid   = Map[Pos, (block: Block, name: Name)]
+type Blocks = Map[Name, (block: Block, pos: Pos)]
+```
+
+### The issues with named blocks
+
+Names are optional in Tarski's world. This is fine for most formulas.
+If a formula uses names, like `Smaller(a, b)`, we can look up the blocks with those names.
+
+But this creates a problem when evaluating quantifiers. For example, for a universal
+quantifier ("for all") I need to evaluate *every block*, including the unnamed blocks.
+Similarly for an existential quantifier ("there exists"), I might have to check every
+block to see if at least one of them satisfies the formula.
+
+The Gapt library requires a name for an object constant: `FOLConst("???")`,
+but I cannot just use the empty string `""` since there can be multiple unnamed blocks.
+
+Initially I made the name into an `Option[String]` type,
+and tried to do some special casing logic. Did not work too well.
+
+Second, I tried to have a parallel "block ID number" system that is separate from names.
+So, whether named or unnamed, each block would have a unique ID number.
+This could be made to work, with a lot of work. But it got hard and complicated.
+When I needed to look up a named block, I would have to first look up its ID number.
+So I needed a THIRD map, between names and ID numbers; moreover there had to be special
+casing code to check if I was working with a "named ID number" or an "unnamed ID number".
+Ugh... 🤮
+
+So... I decided to generate fake names for the unnamed blocks.
+That way they can be looked up and used easily without hard-coding some special casing:
+
+```scala
+type Name = String
+
+object Name:
+  var counter = -1
+  def generateFake: Name =
+    counter += 1
+    s"block$counter"
+```
+
+Now blocks have names like `"a", "b", "c", "d", "e", "f"` and `"block0", "block1", ...`
+
+#### Enforcing the name limitations
+
+Since the only available names are `a, b, c, d, e, f` I need to keep track of
+the names that are assigned to blocks and names that are unused.
+Each `World` instance will start with a map of `a,b,c,d,e,f` names all available:
+
+```scala
+enum Status:
+  case Available, Occupied
+
+object World:
+  // only 6 names are allowed: a,b,c,d,e,f
+  val initNames = Map(
+    "a" -> Available,
+    "b" -> Available,
+    "c" -> Available,
+    "d" -> Available,
+    "e" -> Available,
+    "f" -> Available
+  )
+```
+
+Thanks to the following code, fake names like `"block0"` cannot be occupied:
+
+```scala
+type Names = Map[Name, Status] // a,b,c,d,e,f
+
+extension (names: Names) // these work whether the name is fake or not.
+  def avail(name: Name): Names = names.get(name) match
+    case Some(Occupied)  => names.updated(name, Available)
+    case Some(Available) => names
+    case None            => names // name was fake
+
+  def occupy(name: Name): Names = names.get(name) match
+    case Some(Available) => names.updated(name, Occupied)
+    case Some(Occupied)  => names
+    case None            => names // name was fake
+```
+
 ### Implementing the world
+
+Very boring CRUD-like operations:
+
+- create/update/delete a block from the grid,
+- add/remove names from blocks.
+
+Here is just one example, a rather complicated one.
+The scenario is to click on an unnamed block on the grid, and add a name to it.
+Grid, blocks (by name) and available / occupied names all have to be updated.
+You can see the extra code caused by my double, no wait, now it's triple, `Map` design:
+
+```scala
+// this is tricky; since fake names are also involved.
+def addNameToBlockAt(pos: Pos)(name: Name): World = grid.get(pos) match
+  case None => this
+  case Some((block, oldName)) => // make sure there is a block at position
+    names.get(oldName) match
+      case Some(_) => this
+      case None => // make sure the block does not already have a real name
+        names.get(name) match
+          case None           => this
+          case Some(Occupied) => this
+          case Some(Available) => // make sure the name is available
+            val newBlock  = block.setLabel(name)
+            val newGrid   = grid.updated(pos, (newBlock, name))
+            val newBlocks = blocks.removed(oldName).updated(name, (newBlock, pos))
+            val newNames  = names.occupy(name)
+            copy(grid = newGrid, blocks = newBlocks, names = newNames)
+```
 
 ## Interpreter
 
@@ -362,6 +567,10 @@ and arbitrary points on the plane (`Double`). This is a fairly common problem.
 So there must be many well-made solutions out there. But of course, screw that!
 I gotta do it from scratch.
 
+### Converting from Point to Pos
+
+### Converting from Pos to Point
+
 ### Conditional givens, extension methods
 
 ### Converting conditionally with givens
@@ -369,6 +578,8 @@ I gotta do it from scratch.
 ### Deferred givens?
 
 ### Ad-hoc (typeclass) vs. subtype (inheritance) polymorphism
+
+## Adding package boundaries to find dependency problems, dependency inversion
 
 ## Moving from Doodle to ScalaFX, proper UI
 
