@@ -558,9 +558,28 @@ private def evalAtom(a: FOLAtom)(using b: Blocks): Boolean = a match
 
 ## Controller
 
+TODO add preliminary explanation
+
 ### Rendering
 
+TODO
+
 ### Mouse input
+
+Using a library that does not support UI elements (like buttons) made me come up with
+a really weird solution. I divided the UI into regions, each with its own "origin",
+and the click coordinates `x,y` would be converted to grid positions *relatively*
+with respect to that origin:
+
+![originsUI](originsUI.png)
+
+There is the origin of the entire UI, the origin of the chess board,
+and the origin of the top-right controls.
+In each case, the "button" click is checked by calculating from each respective origin.
+Horrible idea and design... but it will work for now,
+until I switch to a proper GUI library later.
+
+TODO
 
 ## Converters
 
@@ -569,17 +588,232 @@ and arbitrary points on the plane (`Double`). This is a fairly common problem.
 So there must be many well-made solutions out there. But of course, screw that!
 I gotta do it from scratch.
 
-### Converting from Point to Pos
+### Grid positions `Pos` and coordinate positions `Point`
+
+The `Point` system of Doodle work as a Cartesian system centered at the origin.
+The `Grid` system starts at the top-left, and grows to the right and bottom.
+`Point` uses `Double` while `Grid` is integer only.
+
+![gridVsPoint](gridVsPoint.png)
+
+In this system, the left side has `x` coordinate equal to `-width / 2`, and
+the top side has `y` coordinate equal to `height / 2`.
 
 ### Converting from Pos to Point
 
+This is the easier part.
+The board has a width, a height, and numbers of rows and columns.
+The height and width of an invidivial block can be calculated from those.
+Then, a grid position will be the point that is at the center of the square it represents.
+The `0.5` comes from this center (half of the square).
+
+```scala
+// blockWidth  is boardWidth  / numOfColumns
+// blockHeight is boardHeight / numOfRows
+// left is -width / 2, top is height / 2
+extension (pos: Pos)
+  def toPoint: Point =
+    val x = left + (0.5 + pos.col) * blockWidth
+    val y = top - (0.5 + pos.row) * blockHeight
+    Point(x, y)
+```
+
+### Converting from Point to Pos
+
+This is harder since a `Point` is arbitrary and I cannot expect the user to click exactly
+on the center of a square on the grid. So, anywhere on a square should count as the same.
+
+![pointToPos](pointToPos.png)
+
+Fortunately, the `Double` to `Int` conversion will help with that! I can use the inverse
+of the same formula from above, and the `.toInt` conversion acts like a floor function.
+This way, all the `x, y` coordinates will round down to the same grid `row` and `col`:
+
+```scala
+extension (point: Point)
+  def toPos: Pos =
+    val row = (top - point.y) / blockHeight  // -0.5 has to be excluded
+    val col = (-left + point.x) / blockWidth // -0.5 has to be excluded
+    (row.toInt, col.toInt)
+```
+
 ### Conditional givens, extension methods
+
+It made sense to turn this conversion stuff into a trait.
+Initially I decided to do it as an implicit typeclass instance, which provides
+extension methods to `Point` and `Pos` which uses *itself* as an implicit parameter:
+
+```scala
+trait Converter:
+  val blockHeight: Double
+  val blockWidth: Double
+  val top: Double
+  val left: Double
+  extension (pos: Pos) def toPoint(using Converter): Point
+  extension (point: Point) def toPos(using Converter): Pos
+```
+
+This way, an implicit `Converter` instance would be provided at the beginning,
+and all the `.toPoint` and `.toPos` methods would pick it up automatically,
+without any annoying parameter passing down all over the place.
+This is a very nice, elegant design.
+
+However, the conversions depend on the board width, height, and the grid's number of rows
+and columns, and these would have to be passed down everywhere too.
+So... we can make them explicit too! Then we can use Scala's *conditional givens*.
+A conditional given consumes other givens as implicit parameters and produces a new given.
+
+```scala
+given (dims: Dimensions) => (gs: GridSize) => Converter:
+```
+
+From the board dimensions (width and height), and grid size (numbers of rows and columns),
+we can derive the height and width of a block, and the top / left of the board:
+
+```scala
+given (dims: Dimensions) => (gs: GridSize) => Converter:
+  val blockHeight: Double = dims.h / gs.rows
+  val blockWidth: Double = dims.w / gs.cols
+  val top: Double = dims.h / 2
+  val left: Double = dims.w / 2
+  // followed by the conversion extension methods from above
+```
 
 ### Converting conditionally with givens
 
-### Deferred givens?
+This design was so beautiful and clever, it made me feel very smart!
+However, using it caused some friction, and made me notice an anti-pattern:
+trying to conditionally choose a given, among many givens of the same type, is painful!
+I have to use 3 different dimensions/grid sizes, and corresponding conversions:
+
+```scala
+object UIConverter:
+  given Dimensions = (h = Height, w = Width)
+  given GridSize = (rows = BoardRows, cols = BoardCols * 2)
+
+object BoardConverter:
+  given Dimensions = (h = Height, w = Width / 2)
+  given GridSize = (rows = BoardRows, cols = BoardCols)
+
+object ControlsConverter:
+  given Dimensions = (h = Height / 8, w = Width / 2)
+  given GridSize = (rows = ControlRows, cols = ControlCols)
+
+def convertPointConditionally(p: Point): Pos =
+  if p.x < 0 then
+    import BoardConverter.given
+    Point(p.x - BoardOrigin.x, p.y - BoardOrigin.y).toPos
+  else if p.y > ControlsBottom then
+    import ControlsConverter.given
+    Point(p.x - ControlsOrigin.x, p.y - ControlsOrigin.y).toPos
+  else
+    import UIConverter.given
+    p.toPos
+```
+
+As you see, in order to avoid "ambiguous given instances" errors, I have to place
+each given in a separate object to put them in different scopes,
+then I have to manually import that particular object's givens.
+Another problem is that this obscures the intent of the code for the reader.
+
+The anti-pattern is: "don't use givens if, a given does not apply generally
+and has to be selected conditionally among many givens of the same type."
+Or more generally: "don't make a given-based design if it's getting too complicated."
+
+### Deferred givens? No, just regular old parameters
+
+There *is* a way to improve this a bit, using another advanced Scala feature:
+[deferred givens](https://docs.scala-lang.org/scala3/reference/contextual/deferred-givens.html)
+
+Instead of a conditional given, I could "lift" the `Dimensions` and `GridSize` givens
+up into the `Converter` trait itself as abstract / unimplemented members:
+
+```scala
+trait Converter:
+  given dims: Dimensions
+  given gs: GridSize
+  // ... the rest of the trait
+```
+
+But abstract givens are being phased out / replaced by deferred givens
+(as mentioned in the documentation above):
+
+```scala
+trait Converter:
+  given Dimensions as dims = deferred
+  given GridSize as gs = deferred
+  // ... the rest of the trait
+```
+
+Then these have to be implemented by concrete instances:
+
+```scala
+object BoardConverter extends Converter:
+  given Dimensions = (h = Height, w = Width / 2)
+  given GridSize = (rows = BoardRows, cols = BoardCols)
+```
+
+Then it dawned on me... all this given mechanism is just redundant!
+Traits in Scala can *accept parameters!* 🤣 I totally forgot about that!
+If I give up on making everything implicit, and make them explicit instead, then:
+
+```scala
+trait Converter(dims: Dimensions, gs: GridSize)
+```
+
+Now the extension methods do not work because the trait is not a given instance;
+we have to use the conversion methods directly:
+
+```scala
+trait Converter(dims: Dimensions, gs: GridSize):
+  val blockHeight: Double = dims.h / gs.rows
+  val blockWidth: Double  = dims.w / gs.cols
+  val top: Double         = dims.h / 2
+  val left: Double        = -dims.w / 2
+  def toPoint(pos: Pos): Point =
+    val x = left + (0.5 + pos.col) * blockWidth
+    val y = top - (0.5 + pos.row) * blockHeight
+    Point(x, y)
+  def toPos(point: Point): Pos =
+    val row = (top - point.y) / blockHeight  // - 0.5
+    val col = (-left + point.x) / blockWidth // - 0.5
+    (row.toInt, col.toInt)
+```
 
 ### Ad-hoc (typeclass) vs. subtype (inheritance) polymorphism
+
+Sometimes ad-hoc polymorphism is not a good fit for a solution,
+and instead a traditional, OOP subtyping is a much better fit.
+Generally we are told to prefer composition over inheritance,
+but this is one of those rare cases where inheritance is better.
+
+I can define the parameters for each instance purely as constants, not givens:
+
+```scala
+val UIDimensions       = (h = Height, w = Width)
+val UIGridSize         = (rows = BoardRows, cols = BoardCols * 2)
+val BoardDimensions    = (h = Height, w = Width / 2)
+val BoardGridSize      = (rows = BoardRows, cols = BoardCols)
+val ControlsDimensions = (h = Height / 8, w = Width / 2)
+val ControlsGridSize   = (rows = ControlRows, cols = ControlCols)
+```
+
+then we just extend the trait!
+
+```scala
+object UIConverter       extends Converter(UIDimensions, UIGridSize)
+object BoardConverter    extends Converter(BoardDimensions, BoardGridSize)
+object ControlsConverter extends Converter(ControlsDimensions, ControlsGridSize)
+```
+
+Now the conditional conversion logic is much simpler and the intent is clearer:
+
+```scala
+def convertPointConditionally(p: Point): Pos =
+  if p.x < 0 then BoardConverter.toPos((p - BoardOrigin).toPoint)
+  else if p.y > ControlsBottom then ControlsConverter.toPos((p - ControlsOrigin).toPoint)
+  else UIConverter.toPos(p)
+```
 
 ## Adding package boundaries to find dependency problems, dependency inversion
 
