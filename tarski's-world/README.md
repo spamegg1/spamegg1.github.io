@@ -4,6 +4,43 @@
 
 Enjoy my silly design adventures and mistakes below!
 
+- [Tarski's World](#tarskis-world)
+  - [What is this?](#what-is-this)
+    - [Who is Tarski?](#who-is-tarski)
+    - [Approach](#approach)
+  - [Parsing and interpreting First Order Logic (FOL)](#parsing-and-interpreting-first-order-logic-fol)
+    - [Crude attempt at self-parsing](#crude-attempt-at-self-parsing)
+      - [The issue of free variables and substitution](#the-issue-of-free-variables-and-substitution)
+    - [Giving up and exploring much better options: enter GAPT](#giving-up-and-exploring-much-better-options-enter-gapt)
+      - [Syntax (proofs) and semantics (world)](#syntax-proofs-and-semantics-world)
+      - [Out-of-the-box parsing](#out-of-the-box-parsing)
+  - [Model, View, Controller](#model-view-controller)
+    - [Data: model or view? It's philosophical](#data-model-or-view-its-philosophical)
+    - [Domain analysis: thinking naively and deciding the components](#domain-analysis-thinking-naively-and-deciding-the-components)
+    - [Single responsibility, or "single place" for a responsibility](#single-responsibility-or-single-place-for-a-responsibility)
+  - [World (model, data) design](#world-model-data-design)
+    - [Grid positions](#grid-positions)
+    - [Map data structures, key / value pairs, lookups](#map-data-structures-key--value-pairs-lookups)
+    - [The issues with named blocks](#the-issues-with-named-blocks)
+      - [Enforcing the name limitations](#enforcing-the-name-limitations)
+    - [Implementing the world](#implementing-the-world)
+  - [Interpreter](#interpreter)
+    - [Evaluating formulas in worlds](#evaluating-formulas-in-worlds)
+  - [Controller](#controller)
+    - [Rendering](#rendering)
+    - [Mouse input](#mouse-input)
+  - [Converters](#converters)
+    - [Grid positions `Pos` and coordinate positions `Point`](#grid-positions-pos-and-coordinate-positions-point)
+    - [Converting from Pos to Point](#converting-from-pos-to-point)
+    - [Converting from Point to Pos](#converting-from-point-to-pos)
+    - [Conditional givens, extension methods](#conditional-givens-extension-methods)
+    - [Converting conditionally with givens](#converting-conditionally-with-givens)
+    - [Deferred givens? No, just regular old parameters](#deferred-givens-no-just-regular-old-parameters)
+    - [Ad-hoc (typeclass) vs. subtype (inheritance) polymorphism](#ad-hoc-typeclass-vs-subtype-inheritance-polymorphism)
+  - [Adding package boundaries to find dependency problems, dependency inversion](#adding-package-boundaries-to-find-dependency-problems-dependency-inversion)
+  - [Moving from Doodle to ScalaFX, proper UI](#moving-from-doodle-to-scalafx-proper-ui)
+  - [Work in progress](#work-in-progress)
+
 ## What is this?
 
 [Recreating](https://github.com/spamegg1/tarski/) Barwise and Etchemendy's
@@ -660,7 +697,7 @@ This is a very nice, elegant design.
 
 However, the conversions depend on the board width, height, and the grid's number of rows
 and columns, and these would have to be passed down everywhere too.
-So... we can make them explicit too! Then we can use Scala's *conditional givens*.
+So... we can make them implicit too! Then we can use Scala's *conditional givens*.
 A conditional given consumes other givens as implicit parameters and produces a new given.
 
 ```scala
