@@ -595,7 +595,11 @@ private def evalAtom(a: FOLAtom)(using b: Blocks): Boolean = a match
 
 ## Controller
 
-TODO add preliminary explanation
+Controller has the logic for:
+
+- rendering
+- handling input
+- converting
 
 ### Rendering
 
@@ -853,6 +857,50 @@ def convertPointConditionally(p: Point): Pos =
 ```
 
 ## Adding package boundaries to find dependency problems, dependency inversion
+
+So far everything is inside one big `package tarski`. Now I add packages for `controller`,
+`view` and `model` to see how dependencies work and what needs to be imported.
+This will also expose how the components are coupled and communicate with each other.
+But I'd like to avoid having too many `import`s everywhere.
+
+Adding `package view` to the View exposed some compilation errors,
+but they were solved by a fairly small amount of `import`s.
+
+Controller will no doubt have to import stuff both from View and Model,
+since it is the intersection of the two.
+Model has to import from View as well, since it holds the types of data defined in View.
+This is normal and not unnecessary coupling.
+I think it makes sense for Controller to import from View and Model,
+and for Model to import the data types from View,
+but View should not import from the others.
+
+One issue I found was with `FormulaBox`: its `.toImage` method depends on Interpreter,
+because it needs to evaluate the formula, then produce a T/F image.
+Evaluating the formula requires `World` from Model, and Interpreter from `Controller`.
+This logic should be moved to Controller, probably.
+
+But... the problem goes a bit deeper: `FormulaBox` has a `CheckBox` field which determines
+its true/false state; so the T/F image is coupled. Should it be separated and moved?
+This data is kept in `Model` and it has to be updated when formulas are evaluated.
+Where should this functionality go? Model's update functionality is kept in itself.
+
+The solution is a compromise: `FormulaBox` should keep its update method,
+which is purely data-related; but instead of manually evaluating the formula,
+it should accept the `Boolean` result of the evaluation.
+Then the renderer in Controller will do the evaluation.
+
+Another issue was with the constants. They feel like they belong in View, but maybe
+they also belong in a broader, "main" section? Not sure.
+I put them inside an `object Constants` so it's clear where they are coming from.
+Then inside `package view`, I `export Constants.*` so it's available package-wide.
+
+Tests also need all the constants. Adding `package testing` did not break anything.
+Testing imports from all the others, which is OK.
+
+Maybe it's a good idea to have a `package.scala` for each package,
+and export all the necessary imports, inside that package,
+to avoid repeating all the imports? So far the imports are very few, so it's unnecessary.
+No, I will go with this idea. It's nice to eliminate annoying imports.
 
 ## Moving from Doodle to ScalaFX, proper UI
 
