@@ -37,7 +37,11 @@ Enjoy my silly design adventures and mistakes below!
     - [Converting conditionally with givens](#converting-conditionally-with-givens)
     - [Deferred givens? No, just regular old parameters](#deferred-givens-no-just-regular-old-parameters)
     - [Ad-hoc (typeclass) vs. subtype (inheritance) polymorphism](#ad-hoc-typeclass-vs-subtype-inheritance-polymorphism)
-  - [Adding package boundaries to find dependency problems, dependency inversion](#adding-package-boundaries-to-find-dependency-problems-dependency-inversion)
+  - [Adding package boundaries to find dependency problems](#adding-package-boundaries-to-find-dependency-problems)
+    - [Unavoidable coupling](#unavoidable-coupling)
+      - [Dependency inversion](#dependency-inversion)
+    - [Constants](#constants)
+    - [Package declarations](#package-declarations)
   - [Moving from Doodle to ScalaFX, proper UI](#moving-from-doodle-to-scalafx-proper-ui)
   - [Work in progress](#work-in-progress)
 
@@ -856,7 +860,7 @@ def convertPointConditionally(p: Point): Pos =
   else UIConverter.toPos(p)
 ```
 
-## Adding package boundaries to find dependency problems, dependency inversion
+## Adding package boundaries to find dependency problems
 
 So far everything is inside one big `package tarski`. Now I add packages for `controller`,
 `view` and `model` to see how dependencies work and what needs to be imported.
@@ -874,6 +878,8 @@ I think it makes sense for Controller to import from View and Model,
 and for Model to import the data types from View,
 but View should not import from the others.
 
+### Unavoidable coupling
+
 One issue I found was with `FormulaBox`: its `.toImage` method depends on Interpreter,
 because it needs to evaluate the formula, then produce a T/F image.
 Evaluating the formula requires `World` from Model, and Interpreter from `Controller`.
@@ -889,6 +895,16 @@ which is purely data-related; but instead of manually evaluating the formula,
 it should accept the `Boolean` result of the evaluation.
 Then the renderer in Controller will do the evaluation.
 
+#### Dependency inversion
+
+If I wanted to stick to SOLID design principles strictly, I should probably make some
+kind of interface that View and Controller both depend on and use.
+Because, changes to one will trigger changes to the other. This is called
+[Dependency Inversion](https://en.wikipedia.org/wiki/Dependency_inversion_principle).
+But I will cross that bridge when I come to it.
+
+### Constants
+
 Another issue was with the constants. They feel like they belong in View, but maybe
 they also belong in a broader, "main" section? Not sure.
 I put them inside an `object Constants` so it's clear where they are coming from.
@@ -897,10 +913,57 @@ Then inside `package view`, I `export Constants.*` so it's available package-wid
 Tests also need all the constants. Adding `package testing` did not break anything.
 Testing imports from all the others, which is OK.
 
+### Package declarations
+
 Maybe it's a good idea to have a `package.scala` for each package,
 and export all the necessary imports, inside that package,
 to avoid repeating all the imports? So far the imports are very few, so it's unnecessary.
 No, I will go with this idea. It's nice to eliminate annoying imports.
+
+Initially I added a `package.scala` with `export`s in each folder (`model`, `view`,
+`controller` and `testing`). Then I decided to place them all in one "main" file.
+Here I am using package declarations in a way *literally no one else* does in Scala.
+Notice the actual `:` and indentation following the package declarations:
+
+```scala
+package tarski:
+  // project-wide imports of third-party libraries, as exports. For example:
+  export cats.effect.unsafe.implicits.global
+  export doodle.core.{Color, Point, OpenPath}
+  export gapt.expr.stringInterpolationForExpressions
+  extension (f: FOLFormula)
+    def substitute(x: FOLVar, c: FOLConst) = FOLSubstitution((x, c)).apply(f)
+  // ... more of that...
+
+  // project-internal imports from one package to another, as exports
+  package model:
+    export view.{Block, FormulaBox, Controls}
+
+  package view:
+    export Constants.*
+
+  package controller:
+    export model.{Pos, Blocks, Grid, GridSize, World}, Pos.*
+    export view.{Controls, FormulaBox, Constants}, Constants.*
+    export Converter.*
+
+  package testing:
+    export model.{World, Grid, Blocks, Status}, Status.*
+    export view.{Block, Constants}, Constants.*
+    export controller.{eval, Converter}, Converter.*
+```
+
+This is a very elegant solution for me, which I think would be unacceptable in industry.
+There are no `import`s anywhere anymore, and everything is in one place.
+It's nice since it is a small personal project.
+In a large project with multiple people working on it, this would be a no-no,
+since `import`s at the top of a file tell programmers where things come from.
+
+One limitation I found is that `export`s don't work with packages and with Java stuff.
+If we try to export a package Scala actually gives us an error:
+"Implementation restriction". So it makes logical sense, but is restricted for reasons.
+There are ways around it, like wrapping things with `object`s and then exporting that.
+But that defeats the purpose, so I'll live with one or two `import`s.
 
 ## Moving from Doodle to ScalaFX, proper UI
 
