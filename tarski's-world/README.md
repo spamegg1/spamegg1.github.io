@@ -851,13 +851,27 @@ object BoardConverter    extends Converter(BoardDimensions, BoardGridSize)
 object ControlsConverter extends Converter(ControlsDimensions, ControlsGridSize)
 ```
 
+Heck, we don't even need a trait, just make it a normal class, and instances:
+
+```scala
+class Converter(dims: Dimensions, gs: GridSize):
+  // ...
+
+object Converter:
+  val UIConverter       = Converter(UIDimensions, UIGridSize)
+  val BoardConverter    = Converter(BoardDimensions, BoardGridSize)
+  val ControlsConverter = Converter(ControlsDimensions, ControlsGridSize)
+```
+
 Now the conditional conversion logic is much simpler and the intent is clearer:
 
 ```scala
-def convertPointConditionally(p: Point): Pos =
-  if p.x < 0 then BoardConverter.toPos((p - BoardOrigin).toPoint)
-  else if p.y > ControlsBottom then ControlsConverter.toPos((p - ControlsOrigin).toPoint)
-  else UIConverter.toPos(p)
+object Converter:
+  // ...
+  def convertPointConditionally(p: Point): Pos =
+    if p.x < 0 then BoardConverter.toPos((p - BoardOrigin).toPoint)
+    else if p.y > ControlsBottom then ControlsConverter.toPos((p - ControlsOrigin).toPoint)
+    else UIConverter.toPos(p)
 ```
 
 ## Adding package boundaries to find dependency problems
