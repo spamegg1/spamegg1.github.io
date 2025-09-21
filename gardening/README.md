@@ -7,7 +7,7 @@ and overgrown ivy roots. It was in very bad shape:
 
 ![00-bad-shape](00-bad-shape.jpg)
 
-- The whole you see there was actually my bedroom! Along with rats and scorpion friends.
+- The hole you see there was actually my bedroom! Along with rats and scorpion friends.
 
 ![00-covered-in-ivy](00-covered-in-ivy.jpg)
 
