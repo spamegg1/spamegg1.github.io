@@ -858,10 +858,10 @@ object BoardConverter    extends Converter(BoardDimensions, BoardGridSize)
 object ControlsConverter extends Converter(ControlsDimensions, ControlsGridSize)
 ```
 
-Heck, we don't even need a trait, just make it a normal class, and instances:
+Heck, we don't even need a trait, just make it a case class, and instances:
 
 ```scala
-class Converter(dims: Dimensions, gs: GridSize):
+case class Converter(dims: Dimensions, gs: GridSize):
   // ...
 
 object Converter:
