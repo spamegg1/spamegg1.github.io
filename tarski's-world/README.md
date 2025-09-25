@@ -16,8 +16,8 @@ Enjoy my silly design adventures and mistakes below!
       - [Out-of-the-box parsing](#out-of-the-box-parsing)
   - [Model, View, Controller](#model-view-controller)
     - [Data: model or view? It's philosophical](#data-model-or-view-its-philosophical)
+      - [No consensus out there](#no-consensus-out-there)
     - [Domain analysis: thinking naively and deciding the components](#domain-analysis-thinking-naively-and-deciding-the-components)
-    - [Single responsibility, or "single place" for a responsibility](#single-responsibility-or-single-place-for-a-responsibility)
   - [World (model, data) design](#world-model-data-design)
     - [Grid positions](#grid-positions)
     - [Map data structures, key / value pairs, lookups](#map-data-structures-key--value-pairs-lookups)
@@ -27,16 +27,17 @@ Enjoy my silly design adventures and mistakes below!
   - [Interpreter](#interpreter)
     - [Evaluating formulas in worlds](#evaluating-formulas-in-worlds)
   - [Controller](#controller)
-    - [Rendering](#rendering)
     - [Mouse input](#mouse-input)
-  - [Converters](#converters)
-    - [Grid positions `Pos` and coordinate positions `Point`](#grid-positions-pos-and-coordinate-positions-point)
-    - [Converting from Pos to Point](#converting-from-pos-to-point)
-    - [Converting from Point to Pos](#converting-from-point-to-pos)
-    - [Conditional givens, extension methods](#conditional-givens-extension-methods)
-    - [Converting conditionally with givens](#converting-conditionally-with-givens)
-    - [Deferred givens? No, just regular old parameters](#deferred-givens-no-just-regular-old-parameters)
-    - [Ad-hoc (typeclass) vs. subtype (inheritance) polymorphism](#ad-hoc-typeclass-vs-subtype-inheritance-polymorphism)
+    - [Converters](#converters)
+      - [Grid positions `Pos` and coordinate positions `Point`](#grid-positions-pos-and-coordinate-positions-point)
+      - [Converting from Pos to Point](#converting-from-pos-to-point)
+      - [Converting from Point to Pos](#converting-from-point-to-pos)
+      - [Conditional givens, extension methods](#conditional-givens-extension-methods)
+      - [Converting conditionally with givens](#converting-conditionally-with-givens)
+      - [Deferred givens? No, just regular old parameters](#deferred-givens-no-just-regular-old-parameters)
+      - [Ad-hoc (typeclass) vs. subtype (inheritance) polymorphism](#ad-hoc-typeclass-vs-subtype-inheritance-polymorphism)
+  - [View](#view)
+    - [Rendering](#rendering)
   - [Adding package boundaries to find dependency problems](#adding-package-boundaries-to-find-dependency-problems)
     - [Unavoidable coupling](#unavoidable-coupling)
       - [Dependency inversion](#dependency-inversion)
@@ -247,7 +248,6 @@ Then I remembered this [thing](https://en.wikipedia.org/wiki/Model–view–cont
 Of course I did no reading or research. Instead I started thinking about it naively.
 To me it seemed like Controller was simply the "glue" between Model and Controller.
 "Could it really be that simple? There's gotta be more to it than that", I thought.
-But looks like it really is.
 
 I reorganized the repository, at this point I still have grammar but no controller yet:
 
@@ -278,8 +278,34 @@ case class Block(
 
 That's all visual stuff, so it should be in the View right?
 But wait, isn't this *just data*? So it should be part of the Model then?
-Since I don't actually have different views, I am leaning in the first direction.
-So, for me, View = "visual data and related stuff".
+It gets *philosophical*: what if the Model needs to hold data that *is* visual?
+Because the actual logic of the program in this case
+depends on the size / color / shape of the objects.
+This `Block` class is a place where data and visuals merge into one thing.
+I am working on a very weird special case here!
+
+Ideally, to serve multiple views, the Model should have just one kind of data,
+which is then translated to multiple visual elements.
+So the size / color / shape would be the "one data".
+
+I could duplicate the `Block` class in Model and View,
+call it `BlockData` and `BlockView` or something.
+So `BlockData` would be just the "data", then `BlockView` would be "how it looks". 😄
+
+Or, just move `Block` into Model, then let the View just handle the rendering?
+
+There is more to think about. How the formulas will be rendered, for example!
+Should that also go into Model?
+Then everything moves into Model, and View is mostly empty.
+
+Should there be a 1-1 correspondence between Model and View for every piece of data?
+`BlockData` <-> `BlockView`, `Formula` <-> `FormulaView` and so on?
+The fact is that it's actually quite simple to convert a `Block` or a `Formula`
+to an image, so that it seems redundant / overkill design to duplicate classes.
+
+I have to draw the line somewhere and make a decision...
+
+#### No consensus out there
 
 Seems like even in the broader software world there really is no consensus.
 There are many variants like model-view-presenter, model-view-adapter,
@@ -308,7 +334,7 @@ To quote them on this issue:
 
 I do have to admit, this stuff gets *very philosophical!*
 If I say "this block is *blue*", is that "what you see" or "how you see it"?
-I think I agree with them, it's which data I see, so I will go with that.
+The data itself (blue) is a visual thing, kind of...
 
 ### Domain analysis: thinking naively and deciding the components
 
@@ -330,7 +356,11 @@ View could include:
 - all the graphically relevant constants (board size, number of rows and columns etc.)
 - the description of blocks (but not the actual data)
   - things like shape, color, size, etc.
+  - This one is the confusing one. Should it be in Model instead?
+    - It could be in either honestly.
 - the description of formula displays
+  - receive command from Controller to redraw when formulas are evaluated.
+  - Formula evaluation does not affect data held in Model, only the display.
 - the description of the UI, buttons, etc.
 - For each description, also the mechanism to convert data to an image
 
@@ -344,31 +374,12 @@ Controller could include functionality like:
   - call Interpreter with data from Model
   - then use View's mechanism to convert them to images to display them
 
+To stick to the formalities, I am also supposed to add an `Observer` that both View and
+Controller depend on, to get notified by the Model when its state changes.
+But I will avoid the formality for now and let them talk "directly".
+
 This naive approach is probably violating some rules about the separation of Model, View
 and Controller and how they are supposed to interact, but oh well. Let's go!
-
-### Single responsibility, or "single place" for a responsibility
-
-With this design the job of displaying objects is somewhat split into two,
-and distributed between View and Controller:
-
-- the View converts a single block to a single image,
-- the Controller gets all the individual images and puts them together.
-
-Now there is a well known principle called the "Single Responsibility Principle"
-which is part of the SOLID principles. I was thinking that there might be a similar
-principle, like "the code and logic for a single functionality or
-responsibility should all be in a single place, not spread out all over the place."
-Not sure if there is one, or what it might be called? Anyway, I am violating it! 😆
-
-It does make sense for View to convert a `Block` to an `Image` since how a block looks
-is independent of everything else, looks the same no matter where it is.
-
-But maybe the "rendering all the blocks" logic could be moved into View too?
-Then View would have to talk to Model directly instead of through the Controller...
-Or View would ask Controller for the blocks, Controller would ask Model,
-get them from Model, then hand it over to View...
-ah well, at this point it's all semantics, who cares 🤷 I'll come up with something.
 
 ## World (model, data) design
 
@@ -594,20 +605,16 @@ private def evalAtom(a: FOLAtom)(using b: Blocks): Boolean = a match
   case FOLAtom("Larger", Seq(FOLConst(c), FOLConst(d)))  => b(c).block.larger(b(d).block)
   case FOLAtom("=", Seq(FOLConst(c), FOLConst(d)))       => b(c).block == b(d).block
   case FOLAtom("SameRow", Seq(FOLConst(c), FOLConst(d))) => b(c).pos.sameRow(b(d).pos)
-  // ...
+  // other cases...
 ```
 
 ## Controller
 
 Controller has the logic for:
 
-- rendering
 - handling input
-- converting
-
-### Rendering
-
-TODO
+- converting from arbitary points to grid coordinates
+- handling UI
 
 ### Mouse input
 
@@ -626,14 +633,14 @@ until I switch to a proper GUI library later.
 
 TODO
 
-## Converters
+### Converters
 
 Given the model I decided on, I have to convert between grid positions (`Int`)
 and arbitrary points on the plane (`Double`). This is a fairly common problem.
 So there must be many well-made solutions out there. But of course, screw that!
 I gotta do it from scratch.
 
-### Grid positions `Pos` and coordinate positions `Point`
+#### Grid positions `Pos` and coordinate positions `Point`
 
 The `Point` system of Doodle work as a Cartesian system centered at the origin.
 The `Grid` system starts at the top-left, and grows to the right and bottom.
@@ -644,7 +651,7 @@ The `Grid` system starts at the top-left, and grows to the right and bottom.
 In this system, the left side has `x` coordinate equal to `-width / 2`, and
 the top side has `y` coordinate equal to `height / 2`.
 
-### Converting from Pos to Point
+#### Converting from Pos to Point
 
 This is the easier part.
 The board has a width, a height, and numbers of rows and columns.
@@ -663,7 +670,7 @@ extension (pos: Pos)
     Point(x, y)
 ```
 
-### Converting from Point to Pos
+#### Converting from Point to Pos
 
 This is harder since a `Point` is arbitrary and I cannot expect the user to click exactly
 on the center of a square on the grid. So, anywhere on a square should count as the same.
@@ -682,7 +689,7 @@ extension (point: Point)
     (row.toInt, col.toInt)
 ```
 
-### Conditional givens, extension methods
+#### Conditional givens, extension methods
 
 It made sense to turn this conversion stuff into a trait.
 Initially I decided to do it as an implicit typeclass instance, which provides
@@ -724,7 +731,7 @@ given (dims: Dimensions) => (gs: GridSize) => Converter:
   // followed by the conversion extension methods from above
 ```
 
-### Converting conditionally with givens
+#### Converting conditionally with givens
 
 This design was so beautiful and clever, it made me feel very smart!
 However, using it caused some friction, and made me notice an anti-pattern:
@@ -765,7 +772,7 @@ The anti-pattern is: "don't use givens if, a given does not apply generally
 and has to be selected conditionally among many givens of the same type."
 Or more generally: "don't make a given-based design if it's getting too complicated."
 
-### Deferred givens? No, just regular old parameters
+#### Deferred givens? No, just regular old parameters
 
 There *is* a way to improve this a bit, using another advanced Scala feature:
 [deferred givens](https://docs.scala-lang.org/scala3/reference/contextual/deferred-givens.html)
@@ -825,7 +832,7 @@ trait Converter(dims: Dimensions, gs: GridSize):
     (row.toInt, col.toInt)
 ```
 
-### Ad-hoc (typeclass) vs. subtype (inheritance) polymorphism
+#### Ad-hoc (typeclass) vs. subtype (inheritance) polymorphism
 
 Sometimes ad-hoc polymorphism is not a good fit for a solution,
 and instead a traditional, OOP subtyping is a much better fit.
@@ -873,6 +880,12 @@ object Converter:
     else if p.y > ControlsBottom then ControlsConverter.toPos((p - ControlsOrigin).toPoint)
     else UIConverter.toPos(p)
 ```
+
+## View
+
+### Rendering
+
+TODO
 
 ## Adding package boundaries to find dependency problems
 
