@@ -123,3 +123,15 @@ and overgrown ivy roots. It was in very bad shape:
 - An absolutely GINORMOUS cucumber!
 
 ![27](27-ginormous-cucumber.jpg)
+
+- New lettuce plants, under protection from stray cats.
+
+![28](28-lettuce-protected.jpg)
+
+- Lettuce plant, up close.
+
+![29](29-lettuce-upclose.jpg)
+
+- Cucumber growing on a... tree? 😆
+
+![30](30-cucumber-on-tree.jpg)
