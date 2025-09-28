@@ -18,6 +18,7 @@ Enjoy my silly design adventures and mistakes below!
     - [Data: model or view? It's philosophical](#data-model-or-view-its-philosophical)
       - [No consensus out there](#no-consensus-out-there)
     - [Domain analysis: thinking naively and deciding the components](#domain-analysis-thinking-naively-and-deciding-the-components)
+      - [Dependency inversion](#dependency-inversion)
   - [World (model, data) design](#world-model-data-design)
     - [Grid positions](#grid-positions)
     - [Map data structures, key / value pairs, lookups](#map-data-structures-key--value-pairs-lookups)
@@ -33,15 +34,13 @@ Enjoy my silly design adventures and mistakes below!
       - [Converting from Pos to Point](#converting-from-pos-to-point)
       - [Converting from Point to Pos](#converting-from-point-to-pos)
       - [Conditional givens, extension methods](#conditional-givens-extension-methods)
-      - [Converting conditionally with givens](#converting-conditionally-with-givens)
+      - [Converting conditionally with givens: an anti-pattern](#converting-conditionally-with-givens-an-anti-pattern)
       - [Deferred givens? No, just regular old parameters](#deferred-givens-no-just-regular-old-parameters)
       - [Ad-hoc (typeclass) vs. subtype (inheritance) polymorphism](#ad-hoc-typeclass-vs-subtype-inheritance-polymorphism)
   - [View](#view)
+    - [Imaging](#imaging)
     - [Rendering](#rendering)
   - [Adding package boundaries to find dependency problems](#adding-package-boundaries-to-find-dependency-problems)
-    - [Unavoidable coupling](#unavoidable-coupling)
-      - [Dependency inversion](#dependency-inversion)
-    - [Constants](#constants)
     - [Package declarations](#package-declarations)
   - [Moving from Doodle to ScalaFX, proper UI](#moving-from-doodle-to-scalafx-proper-ui)
   - [Work in progress](#work-in-progress)
@@ -348,21 +347,19 @@ It could include:
 
 - the chess board as a grid, with blocks (actual data) placed on it
   - receive commands from Controller to add / remove / move blocks in the database
-- the current state: which names are occupied by objects, etc.
+- the current state of objects: which names are occupied by objects, etc.
   - receive commands from Controller to change this state
+- the current state of formula evaluations
+  - receive commands from Controller to update this state when formulas are re-evaluated
 
 View could include:
 
 - all the graphically relevant constants (board size, number of rows and columns etc.)
-- the description of blocks (but not the actual data)
-  - things like shape, color, size, etc.
-  - This one is the confusing one. Should it be in Model instead?
-    - It could be in either honestly.
-- the description of formula displays
-  - receive command from Controller to redraw when formulas are evaluated.
-  - Formula evaluation does not affect data held in Model, only the display.
-- the description of the UI, buttons, etc.
-- For each description, also the mechanism to convert data to an image
+- how to convert block data to images
+  - get data from Model
+- how to convert formulas to images
+  - receive command from Controller to redraw when formulas are evaluated
+- how to render the UI, buttons, etc.
 
 Controller could include functionality like:
 
@@ -372,14 +369,19 @@ Controller could include functionality like:
 - receive a mouse click to add / remove a name to / from an object (tell Model to update)
 - receive a mouse click to evaluate formulas
   - call Interpreter with data from Model
-  - then use View's mechanism to convert them to images to display them
+  - then tell View to redraw formula evaluation results
 
-To stick to the formalities, I am also supposed to add an `Observer` that both View and
-Controller depend on, to get notified by the Model when its state changes.
+This naive approach is probably violating some rules about the separation of
+Model, View and Controller and how they are supposed to interact, but oh well. Let's go!
+
+#### Dependency inversion
+
+If I wanted to stick to SOLID design principles strictly, I should probably add an
+`Observer` interface that View and Controller both depend on and use.
+Because, changes to one will trigger changes to the other. This is called
+[Dependency Inversion](https://en.wikipedia.org/wiki/Dependency_inversion_principle).
 But I will avoid the formality for now and let them talk "directly".
-
-This naive approach is probably violating some rules about the separation of Model, View
-and Controller and how they are supposed to interact, but oh well. Let's go!
+This is violating Dependency Inversion (D in SOLID).
 
 ## World (model, data) design
 
@@ -449,7 +451,7 @@ multi-key maps of the same type, but not quite what I need.
 I guess what I *really* need here is a relational database... but screw that!
 So I ended up with a compromise of having TWO maps.
 The downside is that BOTH maps have to be updated every time something changes.
-I will use a proper relational database later, I promise!
+I might use a proper relational database later.
 
 Once again, named tuples:
 
@@ -574,7 +576,8 @@ The evaluated formulas will be dead simple, and the worlds will be very small.
 
 ### Evaluating formulas in worlds
 
-We only need the blocks from a world. The logical connective part is very easy:
+We only need the blocks from a world (which include grid positions).
+The logical connective part is very easy:
 
 ```scala
 def eval(formula: FOLFormula)(using blocks: Blocks): Boolean = formula match
@@ -731,7 +734,7 @@ given (dims: Dimensions) => (gs: GridSize) => Converter:
   // followed by the conversion extension methods from above
 ```
 
-#### Converting conditionally with givens
+#### Converting conditionally with givens: an anti-pattern
 
 This design was so beautiful and clever, it made me feel very smart!
 However, using it caused some friction, and made me notice an anti-pattern:
@@ -883,6 +886,15 @@ object Converter:
 
 ## View
 
+View needs to:
+
+- convert data to images: `Imager`
+- put images together: `Renderer`
+
+### Imaging
+
+TODO
+
 ### Rendering
 
 TODO
@@ -890,55 +902,9 @@ TODO
 ## Adding package boundaries to find dependency problems
 
 So far everything is inside one big `package tarski`. Now I add packages for `controller`,
-`view` and `model` to see how dependencies work and what needs to be imported.
+`view`, `model`, `main` and `testing` to see what needs to be imported.
 This will also expose how the components are coupled and communicate with each other.
 But I'd like to avoid having too many `import`s everywhere.
-
-Adding `package view` to the View exposed some compilation errors,
-but they were solved by a fairly small amount of `import`s.
-
-Controller will no doubt have to import stuff both from View and Model,
-since it is the intersection of the two.
-Model has to import from View as well, since it holds the types of data defined in View.
-This is normal and not unnecessary coupling.
-I think it makes sense for Controller to import from View and Model,
-and for Model to import the data types from View,
-but View should not import from the others.
-
-### Unavoidable coupling
-
-One issue I found was with `FormulaBox`: its `.toImage` method depends on Interpreter,
-because it needs to evaluate the formula, then produce a T/F image.
-Evaluating the formula requires `World` from Model, and Interpreter from `Controller`.
-This logic should be moved to Controller, probably.
-
-But... the problem goes a bit deeper: `FormulaBox` has a `CheckBox` field which determines
-its true/false state; so the T/F image is coupled. Should it be separated and moved?
-This data is kept in `Model` and it has to be updated when formulas are evaluated.
-Where should this functionality go? Model's update functionality is kept in itself.
-
-The solution is a compromise: `FormulaBox` should keep its update method,
-which is purely data-related; but instead of manually evaluating the formula,
-it should accept the `Boolean` result of the evaluation.
-Then the renderer in Controller will do the evaluation.
-
-#### Dependency inversion
-
-If I wanted to stick to SOLID design principles strictly, I should probably make some
-kind of interface that View and Controller both depend on and use.
-Because, changes to one will trigger changes to the other. This is called
-[Dependency Inversion](https://en.wikipedia.org/wiki/Dependency_inversion_principle).
-But I will cross that bridge when I come to it.
-
-### Constants
-
-Another issue was with the constants. They feel like they belong in View, but maybe
-they also belong in a broader, "main" section? Not sure.
-I put them inside an `object Constants` so it's clear where they are coming from.
-Then inside `package view`, I `export Constants.*` so it's available package-wide.
-
-Tests also need all the constants. Adding `package testing` did not break anything.
-Testing imports from all the others, which is OK.
 
 ### Package declarations
 
@@ -947,8 +913,8 @@ and export all the necessary imports, inside that package,
 to avoid repeating all the imports? So far the imports are very few, so it's unnecessary.
 No, I will go with this idea. It's nice to eliminate annoying imports.
 
-Initially I added a `package.scala` with `export`s in each folder (`model`, `view`,
-`controller` and `testing`). Then I decided to place them all in one "main" file.
+Initially I added a `package.scala` with `export`s in each folder.
+Then I decided to place them all in one "main" file.
 Here I am using package declarations in a way *literally no one else* does in Scala.
 Notice the actual `:` and indentation following the package declarations:
 
@@ -958,26 +924,25 @@ package tarski:
   export cats.effect.unsafe.implicits.global
   export doodle.core.{Color, Point, OpenPath}
   export gapt.expr.stringInterpolationForExpressions
-  extension (f: FOLFormula)
-    def substitute(x: FOLVar, c: FOLConst) = FOLSubstitution((x, c)).apply(f)
   // ... more of that...
 
   // project-internal imports from one package to another, as exports
-  package model:
-    export view.{Block, FormulaBox, Controls}
-
   package view:
-    export Constants.*
+    export model.{Grid, World, Shape, Block, Result, Formulas, Controls}
+    export Shape.*, Result.*
+    export controller.Converter.BoardConverter
 
   package controller:
-    export model.{Pos, Blocks, Grid, GridSize, World}, Pos.*
-    export view.{Controls, FormulaBox, Constants}, Constants.*
-    export Converter.*
+    export model.{Pos, Blocks, Grid, GridSize, World, Shape}, Pos.*, Shape.*
 
   package testing:
-    export model.{World, Grid, Blocks, Status}, Status.*
-    export view.{Block, Constants}, Constants.*
+    export model.{World, Grid, Shape, Block, Blocks, Status}, Status.*, Shape.*
     export controller.{eval, Converter}, Converter.*
+
+  package main:
+    export model.{World, GridSize, Block, Shape}, Shape.*
+    export view.Renderer.*
+    export controller.{tick, click, move, stop}
 ```
 
 This is a very elegant solution for me, which I think would be unacceptable in industry.
@@ -987,8 +952,8 @@ In a large project with multiple people working on it, this would be a no-no,
 since `import`s at the top of a file tell programmers where things come from.
 
 One limitation I found is that `export`s don't work with packages and with Java stuff.
-If we try to export a package Scala actually gives us an error:
-"Implementation restriction". So it makes logical sense, but is restricted for reasons.
+If we try to export a package Scala gives us an error: "Implementation restriction".
+So it makes logical sense, but is restricted for reasons.
 There are ways around it, like wrapping things with `object`s and then exporting that.
 But that defeats the purpose, so I'll live with one or two `import`s.
 
