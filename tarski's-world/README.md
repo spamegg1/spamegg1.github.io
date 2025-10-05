@@ -897,7 +897,9 @@ TODO
 
 ### Rendering
 
-TODO
+Made a lot of progress on rendering the controls (currently they do nothing):
+
+![render-controls](renderingControls.png)
 
 ## Adding package boundaries to find dependency problems
 
