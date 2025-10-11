@@ -61,7 +61,7 @@ and [Doodle](https://github.com/creativescala/doodle).
 
 So far I have a crude approximation, but most code logic is in place:
 
-![tarski-1](tarski-1.png)
+![so-far](renderingControls.png)
 
 ### Who is Tarski?
 
@@ -654,7 +654,25 @@ def main = Reactor         // types of the inputs:
   .run(MainFrame)          //       Frame
 ```
 
+In case you didn't know, this Reactor design in Doodle is directly inspired by
+[Dr Racket](https://racket-lang.org/download/), which has the same mechanism for
+interactive worlds for education, but it's called "big bang" instead:
+<https://docs.racket-lang.org/teachpack/2htdpuniverse.html#(part._world._interactive)>
+
 So let's implement those!
+
+For 3, we are already done: the program is static until the user clicks something:
+
+```scala
+def tick(world: World): World               = world
+def move(point: Point, world: World): World = world
+def stop(world: World): Boolean             = false
+```
+
+So, moving the mouse does nothing, and the world does not change by itself on each tick.
+Also the world never stops; it's not like a video game with a game-over condition.
+
+Wow, I'm making great progress! 🤣
 
 ### Mouse input
 
