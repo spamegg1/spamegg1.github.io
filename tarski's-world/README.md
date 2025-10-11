@@ -28,7 +28,7 @@ Enjoy my silly design adventures and mistakes below!
   - [Interpreter](#interpreter)
     - [Evaluating formulas in worlds](#evaluating-formulas-in-worlds)
   - [Controller](#controller)
-  - [Reactor: a guide](#reactor-a-guide)
+    - [Reactor: a guide](#reactor-a-guide)
     - [Mouse input](#mouse-input)
     - [Converters](#converters)
       - [Grid positions `Pos` and coordinate positions `Point`](#grid-positions-pos-and-coordinate-positions-point)
@@ -626,7 +626,7 @@ Controller has the logic for:
 - converting from arbitary points to grid coordinates
 - handling UI
 
-## Reactor: a guide
+### Reactor: a guide
 
 Doodle's `Reactor` provides a nice guide for Controller design.
 It expects some functions that handle mouse click, move, and world "tick":
