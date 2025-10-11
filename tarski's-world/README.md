@@ -28,6 +28,7 @@ Enjoy my silly design adventures and mistakes below!
   - [Interpreter](#interpreter)
     - [Evaluating formulas in worlds](#evaluating-formulas-in-worlds)
   - [Controller](#controller)
+  - [Reactor: a guide](#reactor-a-guide)
     - [Mouse input](#mouse-input)
     - [Converters](#converters)
       - [Grid positions `Pos` and coordinate positions `Point`](#grid-positions-pos-and-coordinate-positions-point)
@@ -40,7 +41,13 @@ Enjoy my silly design adventures and mistakes below!
   - [View](#view)
     - [Imaging](#imaging)
     - [Rendering](#rendering)
+    - [View or Model? (again): state of the controls](#view-or-model-again-state-of-the-controls)
+      - [Initial approach: keep it in Model](#initial-approach-keep-it-in-model)
+      - [Second attempt: the `Controls` class](#second-attempt-the-controls-class)
+      - [Problems that arise by moving it from Model to View](#problems-that-arise-by-moving-it-from-model-to-view)
+      - [Should `Controls` state be in... the Controller?](#should-controls-state-be-in-the-controller)
   - [Adding package boundaries to find dependency problems](#adding-package-boundaries-to-find-dependency-problems)
+    - [Dependency tree](#dependency-tree)
     - [Package declarations](#package-declarations)
   - [Moving from Doodle to ScalaFX, proper UI](#moving-from-doodle-to-scalafx-proper-ui)
   - [Work in progress](#work-in-progress)
@@ -619,6 +626,39 @@ Controller has the logic for:
 - converting from arbitary points to grid coordinates
 - handling UI
 
+## Reactor: a guide
+
+Doodle's `Reactor` provides a nice guide for Controller design.
+It expects some functions that handle mouse click, move, and world "tick":
+
+```scala
+package tarski
+package controller
+
+// These are in Controller
+def click(p: Point, world: World): World    = ???
+def tick(world: World): World               = ???
+def move(point: Point, world: World): World = ???
+def stop(world: World): Boolean             = ???
+
+// This one is in View
+def render(world: World): Image = ???
+
+// Then in main, they are called like this:
+@main
+def main = Reactor         // types of the inputs:
+  .init[World](world)      //       World
+  .withOnTick(tick)        //       World => World
+  .withRender(render)      //       World => Image
+  .withOnMouseClick(click) // Point World => World
+  .withOnMouseMove(move)   // Point World => World
+  .withStop(stop)          //       World => Boolean
+  .withTickRate(TickRate)  //    Duration
+  .run(MainFrame)          //       Frame
+```
+
+So let's implement those!
+
 ### Mouse input
 
 Using a library that does not support UI elements (like buttons) made me come up with
@@ -634,7 +674,19 @@ In each case, the "button" click is checked by calculating from each respective 
 Horrible idea and design... but it will work for now,
 until I switch to a proper GUI library later.
 
-TODO
+This leads to the following `click` design:
+(the converters are discussed further below)
+
+```scala
+def click(p: Point, world: World): World =
+  if p.x < 0 then
+    val pos = BoardConverter.toPos((p - BoardOrigin).toPoint)
+    handlePos(pos, world)      // handle position / block changes on the Board
+  else if p.y > ControlsBottom then
+    val pos = ControlsConverter.toPos((p - ControlsOrigin).toPoint)
+    handleControls(pos, world) // handle the controls UI buttons
+  else world                   // do nothing for now
+```
 
 ### Converters
 
@@ -901,12 +953,117 @@ Made a lot of progress on rendering the controls (currently they do nothing):
 
 ![render-controls](renderingControls.png)
 
+### View or Model? (again): state of the controls
+
+One issue that came up is the "selected block on the board".
+The selected block needs a red outline rendered around it (as you see above).
+There are also selected controls for color, shape, size, name, etc.
+
+Should View keep its internal state for this? Or should it be in Model?
+By chance, I was watching a [Tim Cain video](https://www.youtube.com/watch?v=NcIchbZ4eK8)
+where similar considerations came up.
+Tim's approach is to let View keep its internal state:
+
+![view-or-model](viewOrModel.png)
+
+It does make sense, because he is talking about a video game,
+with a much more complicated UI and model (game) state.
+This necessitates more complicated design, using the Observer pattern with events.
+But for me, where should I place the grid position of the "selected block"?
+
+#### Initial approach: keep it in Model
+
+I directly added it to my `World` class:
+
+```scala
+case class World(
+    grid: Grid = Map(),
+    blocks: Blocks = Map(),
+    names: Names = World.initNames,
+    formulas: Formulas = Map(),
+    selectedPos: Option[Pos] = None
+)
+```
+
+#### Second attempt: the `Controls` class
+
+Now I made a `Controls` class which keeps the state of all the controls:
+
+- the grid position of the selected block on the board
+- the selected color
+- the selected shape
+- the selected size
+- the selected named object (`a,b,c,d,e,f`)
+- whether moving a block is enabled or not
+
+```scala
+case class Controls(
+    size: Option[Double] = None,
+    shape: Option[Shape] = None,
+    color: Option[Color] = None,
+    name: Option[Name] = None,
+    move: Boolean = false
+)
+```
+
+But... an instance of `Controls` is still included in `World`,
+so it's still part of the Model:
+
+```scala
+case class World(
+    grid: Grid = Map(),
+    blocks: Blocks = Map(),
+    names: Names = World.initNames,
+    formulas: Formulas = Map(),
+    controls: Controls = Controls(),
+    selectedPos: Option[Pos] = None // should this go INTO controls too?
+)
+```
+
+Should I also include `selectedPos` in this `Controls` instance? Not sure.
+
+#### Problems that arise by moving it from Model to View
+
+If `selectedPos` is moved into View as its internal state,
+then Controller has to get more complicated...
+As you see above, Controller has functions that all return a `World`.
+But now, these functions would have to update View's state as a side effect,
+then return the new `World` in a functional / immutable way.
+Or, it would have to return a `(World, View)` pair... 🤮
+
+Another issue is that, currently View is purely a renderer.
+It just takes `World` data from Model and draws it, that's it.
+Adding state to it will complicate things further.
+It will have to draw, and also have its state updated as a side-effect.
+Or, return an `(Image, View)` pair... 🤮
+
+#### Should `Controls` state be in... the Controller?
+
+Another idea is to keep the `Controls` state in the Controller...
+These decisions are hard! I'll keep things in Model for now, and let's see what happens.
+
 ## Adding package boundaries to find dependency problems
 
 So far everything is inside one big `package tarski`. Now I add packages for `controller`,
 `view`, `model`, `main` and `testing` to see what needs to be imported.
 This will also expose how the components are coupled and communicate with each other.
 But I'd like to avoid having too many `import`s everywhere.
+
+### Dependency tree
+
+I'd like it to be like so:
+
+```scala
+//     main
+//       |
+//     view   testing
+//       |     /
+//    controller
+//       |
+//     model
+//       |
+//    constants
+```
 
 ### Package declarations
 
@@ -952,6 +1109,7 @@ There are no `import`s anywhere anymore, and everything is in one place.
 It's nice since it is a small personal project.
 In a large project with multiple people working on it, this would be a no-no,
 since `import`s at the top of a file tell programmers where things come from.
+Also, `export`s cause namespace pollution and run the risk of name collisions.
 
 One limitation I found is that `export`s don't work with packages and with Java stuff.
 If we try to export a package Scala gives us an error: "Implementation restriction".
