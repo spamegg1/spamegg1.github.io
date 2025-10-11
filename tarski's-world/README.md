@@ -632,9 +632,6 @@ Doodle's `Reactor` provides a nice guide for Controller design.
 It expects some functions that handle mouse click, move, and world "tick":
 
 ```scala
-package tarski
-package controller
-
 // These are in Controller
 def click(p: Point, world: World): World    = ???
 def tick(world: World): World               = ???
