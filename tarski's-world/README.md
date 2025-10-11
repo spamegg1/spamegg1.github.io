@@ -1,6 +1,6 @@
 # Tarski's World
 
-(Last updated September 2025)
+(Last updated October 11, 2025)
 
 Enjoy my silly design adventures and mistakes below!
 
