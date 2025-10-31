@@ -2,7 +2,7 @@
 
 Working prototype, with some features missing:
 
-{% include video.html id="tarski's-world/tarski.mp4" %}
+{% include video.html id="tarski.mp4" %}
 
 (Last updated October 31, 2025)
 
