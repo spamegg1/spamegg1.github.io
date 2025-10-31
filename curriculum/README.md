@@ -51,4 +51,5 @@ Useful byproducts continue:
 - *September 2025:* GSoC is done! I'm working on Tarski again.
   This time, using a [first order logic tool](https://github.com/gapt/gapt).
 - *November 2025:* Tarski is almost finished! Working prototype:
-  {% include video.html id="tarski.mp4" %}
+
+{% include video.html id="tarski.mp4" %}
