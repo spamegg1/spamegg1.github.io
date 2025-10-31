@@ -1,6 +1,8 @@
 # Tarski's World
 
-(Last updated October 11, 2025)
+![tarski](tarski.mp4)
+
+(Last updated October 31, 2025)
 
 Enjoy my silly design adventures and mistakes below!
 
@@ -58,6 +60,7 @@ Enjoy my silly design adventures and mistakes below!
 [Tarski's World](https://www.gradegrinder.net/Products/tw-index.html)
 in [Scala](https://www.scala-lang.org/)
 and [Doodle](https://github.com/creativescala/doodle).
+(I might switch to ScalaFX later.)
 
 So far I have a crude approximation, but most code logic is in place:
 
