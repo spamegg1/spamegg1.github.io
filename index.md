@@ -1,6 +1,6 @@
 # Hi there 👋
 
-![TuxCoding](tux.gif)
+![TuxCoding](assets/tux.gif)
 
 > ***It soon became clear that the unconscious instincts for logic and language which had enabled me to succeed were not shared by the large majority of my students.*** - Susanna Epp (author of [Discrete Mathematics with Applications, 5th edition](https://www.amazon.com/Discrete-Mathematics-Applications-Susanna-Epp-ebook/dp/B07M87BWRC))
 
@@ -25,7 +25,7 @@ and [coding logic](https://github.com/gapt/gapt)
 
 🤔 I’m looking for: nothing at the moment! Still feel free to shoot any ideas my way!
 
-:desktop_computer: I use [![Mint](mint.svg)](https://linuxmint.com)
+:desktop_computer: I use [![Mint](assets/mint.svg)](https://linuxmint.com)
 
 ![spamegg's GitHub stats](https://github-readme-stats-spamegg1.vercel.app/api?username=spamegg1&theme=synthwave)
 
