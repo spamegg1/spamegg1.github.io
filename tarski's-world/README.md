@@ -1,6 +1,8 @@
 # Tarski's World
 
-![tarski](https://github.com/spamegg1/spamegg1.github.io/blob/main/tarski's-world/tarski.mp4)
+Working prototype, with some features missing:
+
+<https://github.com/user-attachments/assets/a9708110-1f76-40f4-a7ec-b01e27410a7e>
 
 (Last updated October 31, 2025)
 
