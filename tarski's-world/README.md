@@ -1,6 +1,6 @@
 # Tarski's World
 
-![tarski](tarski.mp4)
+![tarski](https://github.com/spamegg1/spamegg1.github.io/blob/main/tarski's-world/tarski.mp4)
 
 (Last updated October 31, 2025)
 
