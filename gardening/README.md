@@ -135,3 +135,15 @@ and overgrown ivy roots. It was in very bad shape:
 - Cucumber growing on a... tree? 😆
 
 ![30](30-cucumber-on-tree.jpg)
+
+- Grown lettuces, along with beets growing:
+
+![31](31-lettuce-beets.jpg)
+
+- Tomatoes... in November? 🫨
+
+![32](32-tomatoes-november.jpg)
+
+- A baby kitty resting in an empty flower pot. So cute!
+
+![33](33-kitty-pot.jpg)
