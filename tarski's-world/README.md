@@ -45,6 +45,7 @@ Enjoy my silly design adventures and mistakes below!
     - [Handlers](#handlers)
       - [Handling board positions](#handling-board-positions)
       - [Handling controls](#handling-controls)
+      - [Wrapping and forwarding](#wrapping-and-forwarding)
   - [View](#view)
     - [Imaging](#imaging)
     - [Rendering](#rendering)
@@ -703,46 +704,32 @@ Here are the grid positions:
 
 ![control-grid](controlGrid.png)
 
-So there is a map between grid positions and control buttons:
+So there is a map between control buttons and grid positions:
 
 ```scala
-val gridControl = Map[Pos, String](
-  (0, 0)  -> "Eval",
-  (0, 1)  -> "Eval",
-  (0, 2)  -> "Add",
-  (0, 3)  -> "Add",
-  (0, 4)  -> "a",
-  (0, 5)  -> "b",
-  (0, 6)  -> "c",
-  (0, 7)  -> "d",
-  (0, 8)  -> "e",
-  (0, 9)  -> "f",
-  (0, 10) -> "Blue",
-  (0, 11) -> "Green",
-  (0, 12) -> "Gray",
-  (0, 13) -> "Block",
-  (0, 14) -> "Block",
-  (0, 15) -> "Block",
-  (1, 0)  -> "Move",
-  (1, 1)  -> "Move",
-  (1, 2)  -> "Del",
-  (1, 3)  -> "Del",
-  (1, 4)  -> "Small",
-  (1, 5)  -> "Small",
-  (1, 6)  -> "Mid",
-  (1, 7)  -> "Mid",
-  (1, 8)  -> "Large",
-  (1, 9)  -> "Large",
-  (1, 10) -> "Tri",
-  (1, 11) -> "Squ",
-  (1, 12) -> "Cir",
-  (1, 13) -> "Block",
-  (1, 14) -> "Block",
-  (1, 15) -> "Block"
+val controlGrid = Map[String, Pos](
+  "Eval"  -> (0, 0),
+  "Add"   -> (0, 2),
+  "a"     -> (0, 4),
+  "b"     -> (0, 5),
+  "c"     -> (0, 6),
+  "d"     -> (0, 7),
+  "e"     -> (0, 8),
+  "f"     -> (0, 9),
+  "Blue"  -> (0, 10),
+  "Green" -> (0, 11),
+  "Gray"  -> (0, 12),
+  "Block" -> (0, 14),
+  "Move"  -> (1, 0),
+  "Del"   -> (1, 2),
+  "Small" -> (1, 4),
+  "Mid"   -> (1, 6),
+  "Large" -> (1, 8),
+  "Tri"   -> (1, 10),
+  "Squ"   -> (1, 11),
+  "Cir"   -> (1, 12)
 )
 ```
-
-Notice that for the larger buttons, many grid positions can point to the same button.
 
 This leads to the following `click` design:
 (the converters are discussed further below)
@@ -1038,32 +1025,80 @@ All of this can be handled inside the `World` class, Controller will just call i
 
 #### Handling controls
 
-To handle controls, we need the reverse: a map from controls to grid positions:
+To handle controls, we need the reverse: a map from grid positions to controls:
 
 ```scala
-val controlGrid = Map[String, Pos](
-  "Eval"  -> (0, 0),
-  "Add"   -> (0, 2),
-  "a"     -> (0, 4),
-  "b"     -> (0, 5),
-  "c"     -> (0, 6),
-  "d"     -> (0, 7),
-  "e"     -> (0, 8),
-  "f"     -> (0, 9),
-  "Blue"  -> (0, 10),
-  "Green" -> (0, 11),
-  "Gray"  -> (0, 12),
-  "Block" -> (0, 14),
-  "Move"  -> (1, 0),
-  "Del"   -> (1, 2),
-  "Small" -> (1, 4),
-  "Mid"   -> (1, 6),
-  "Large" -> (1, 8),
-  "Tri"   -> (1, 10),
-  "Squ"   -> (1, 11),
-  "Cir"   -> (1, 12)
+val gridControl = Map[Pos, String](
+  (0, 0)  -> "Eval",
+  (0, 1)  -> "Eval",
+  (0, 2)  -> "Add",
+  (0, 3)  -> "Add",
+  (0, 4)  -> "a",
+  (0, 5)  -> "b",
+  (0, 6)  -> "c",
+  (0, 7)  -> "d",
+  (0, 8)  -> "e",
+  (0, 9)  -> "f",
+  (0, 10) -> "Blue",
+  (0, 11) -> "Green",
+  (0, 12) -> "Gray",
+  (0, 13) -> "Block",
+  (0, 14) -> "Block",
+  (0, 15) -> "Block",
+  (1, 0)  -> "Move",
+  (1, 1)  -> "Move",
+  (1, 2)  -> "Del",
+  (1, 3)  -> "Del",
+  (1, 4)  -> "Small",
+  (1, 5)  -> "Small",
+  (1, 6)  -> "Mid",
+  (1, 7)  -> "Mid",
+  (1, 8)  -> "Large",
+  (1, 9)  -> "Large",
+  (1, 10) -> "Tri",
+  (1, 11) -> "Squ",
+  (1, 12) -> "Cir",
+  (1, 13) -> "Block",
+  (1, 14) -> "Block",
+  (1, 15) -> "Block"
 )
 ```
+
+Notice that for the larger buttons, many grid positions can point to the same button.
+
+Based on which control button is pressed, we delegate it to a helper method:
+
+```scala
+def handleControls(pos: Pos, world: World): World = gridControl.get(pos) match
+  case None => world
+  case Some(value) => // make sure a button is clicked
+    value match
+      case "Eval"                            => handleEval(world)
+      case "Add"                             => world.addBlockFromControls
+      case "Del"                             => world.removeBlockAt(pos)
+      case "Move"                            => world.toggleMove
+      case "Block"                           => world
+      case "a" | "b" | "c" | "d" | "e" | "f" => handleName(value, world)
+      case "Blue" | "Green" | "Gray"         => handleColor(value, world)
+      case "Small" | "Mid" | "Large"         => handleSize(value, world)
+      case "Tri" | "Squ" | "Cir"             => handleShape(value, world)
+```
+
+#### Wrapping and forwarding
+
+A lot of this handling involves updating the `Controls` instance inside `World`.
+This is a bit annoying and repetitive.
+We have to "penetrate" through many wrappers and forward the logic:
+
+- first access `World`
+- then access `Controls` inside `World`
+  - then, possibly, access stuff inside `Controls` (like `Block`)
+  - then update that stuff
+  - then update (copy) `Controls` with the new stuff
+- then update `Controls`
+- then update (copy) `World` with the new controls
+
+This must be a very common problem, I wonder if there is a good solution?
 
 ## View
 
