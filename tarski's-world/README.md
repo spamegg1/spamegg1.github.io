@@ -42,6 +42,9 @@ Enjoy my silly design adventures and mistakes below!
       - [Converting conditionally with givens: an anti-pattern](#converting-conditionally-with-givens-an-anti-pattern)
       - [Deferred givens? No, just regular old parameters](#deferred-givens-no-just-regular-old-parameters)
       - [Ad-hoc (typeclass) vs. subtype (inheritance) polymorphism](#ad-hoc-typeclass-vs-subtype-inheritance-polymorphism)
+    - [Handlers](#handlers)
+      - [Handling board positions](#handling-board-positions)
+      - [Handling controls](#handling-controls)
   - [View](#view)
     - [Imaging](#imaging)
     - [Rendering](#rendering)
@@ -694,6 +697,53 @@ In each case, the "button" click is checked by calculating from each respective 
 Horrible idea and design... but it will work for now,
 until I switch to a proper GUI library later.
 
+Here are the grid positions:
+
+![board-grid](boardGrid.png)
+
+![control-grid](controlGrid.png)
+
+So there is a map between grid positions and control buttons:
+
+```scala
+val gridControl = Map[Pos, String](
+  (0, 0)  -> "Eval",
+  (0, 1)  -> "Eval",
+  (0, 2)  -> "Add",
+  (0, 3)  -> "Add",
+  (0, 4)  -> "a",
+  (0, 5)  -> "b",
+  (0, 6)  -> "c",
+  (0, 7)  -> "d",
+  (0, 8)  -> "e",
+  (0, 9)  -> "f",
+  (0, 10) -> "Blue",
+  (0, 11) -> "Green",
+  (0, 12) -> "Gray",
+  (0, 13) -> "Block",
+  (0, 14) -> "Block",
+  (0, 15) -> "Block",
+  (1, 0)  -> "Move",
+  (1, 1)  -> "Move",
+  (1, 2)  -> "Del",
+  (1, 3)  -> "Del",
+  (1, 4)  -> "Small",
+  (1, 5)  -> "Small",
+  (1, 6)  -> "Mid",
+  (1, 7)  -> "Mid",
+  (1, 8)  -> "Large",
+  (1, 9)  -> "Large",
+  (1, 10) -> "Tri",
+  (1, 11) -> "Squ",
+  (1, 12) -> "Cir",
+  (1, 13) -> "Block",
+  (1, 14) -> "Block",
+  (1, 15) -> "Block"
+)
+```
+
+Notice that for the larger buttons, many grid positions can point to the same button.
+
 This leads to the following `click` design:
 (the converters are discussed further below)
 
@@ -954,6 +1004,65 @@ object Converter:
     if p.x < 0 then BoardConverter.toPos((p - BoardOrigin).toPoint)
     else if p.y > ControlsBottom then ControlsConverter.toPos((p - ControlsOrigin).toPoint)
     else UIConverter.toPos(p)
+```
+
+### Handlers
+
+#### Handling board positions
+
+Position handling on the board is tricky.
+Imagine the user clicks somewhere on the board.
+There are many situations:
+
+- A position is not selected:
+  - in this case, simply select the clicked position.
+  - Update the block display.
+- A position is already selected:
+  - The clicked position is the same as the selected position:
+    - then de-select it.
+    - Update the block display (i.e. display nothing).
+  - The clicked position is different than the selected position:
+    - Move is enabled:
+      - The clicked position is empty:
+        - then move the block at selected position to the clicked position.
+        - Block display does not change (display the same block that is moved).
+      - The clicked position already has a block on it:
+        - in this case, moving is not possible.
+        - Then change the selected position to the clicked position.
+        - Update the block display.
+    - Move is disabled:
+      - then change the selected position to the clicked position.
+      - Update the block display.
+
+All of this can be handled inside the `World` class, Controller will just call it.
+
+#### Handling controls
+
+To handle controls, we need the reverse: a map from controls to grid positions:
+
+```scala
+val controlGrid = Map[String, Pos](
+  "Eval"  -> (0, 0),
+  "Add"   -> (0, 2),
+  "a"     -> (0, 4),
+  "b"     -> (0, 5),
+  "c"     -> (0, 6),
+  "d"     -> (0, 7),
+  "e"     -> (0, 8),
+  "f"     -> (0, 9),
+  "Blue"  -> (0, 10),
+  "Green" -> (0, 11),
+  "Gray"  -> (0, 12),
+  "Block" -> (0, 14),
+  "Move"  -> (1, 0),
+  "Del"   -> (1, 2),
+  "Small" -> (1, 4),
+  "Mid"   -> (1, 6),
+  "Large" -> (1, 8),
+  "Tri"   -> (1, 10),
+  "Squ"   -> (1, 11),
+  "Cir"   -> (1, 12)
+)
 ```
 
 ## View
