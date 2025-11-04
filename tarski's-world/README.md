@@ -1003,11 +1003,11 @@ There are many situations:
 
 - A position is not selected:
   - in this case, simply select the clicked position.
-  - Update the block display.
+  - Update the block display if there is a block there.
 - A position is already selected:
   - The clicked position is the same as the selected position:
     - then de-select it.
-    - Update the block display (i.e. display nothing).
+    - Block display stays the same.
   - The clicked position is different than the selected position:
     - Move is enabled:
       - The clicked position is empty:
@@ -1016,10 +1016,10 @@ There are many situations:
       - The clicked position already has a block on it:
         - in this case, moving is not possible.
         - Then change the selected position to the clicked position.
-        - Update the block display.
+        - Update the block display to show the block at clicked position.
     - Move is disabled:
       - then change the selected position to the clicked position.
-      - Update the block display.
+      - Update the block display if there is a block there.
 
 All of this can be handled inside the `World` class, Controller will just call it.
 
