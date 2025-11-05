@@ -465,15 +465,34 @@ I did some searching online. There are multi-value maps,
 multi-key maps of the same type, but not quite what I need.
 
 I guess what I *really* need here is a relational database... but screw that!
-So I ended up with a compromise of having TWO maps.
-The downside is that BOTH maps have to be updated every time something changes.
-I might use a proper relational database later.
+
+Initially I ended up with a compromise of having TWO maps.
+The downside was that BOTH maps have to be updated every time something changes.
 
 Once again, named tuples:
 
 ```scala
 type Grid   = Map[Pos, (block: Block, name: Name)]
 type Blocks = Map[Name, (block: Block, pos: Pos)]
+
+case class World(
+  grid: Grid,
+  blocks: Blocks,
+  // ...
+)
+```
+
+After the project advanced further, I noticed that the blocks are
+only needed in formula evaluation, nowhere else.
+Later I got rid of the `Blocks` and implemented it just as a method inside `World`:
+
+```scala
+case class World(
+  grid: Grid,
+  // ...
+):
+  def blocks: Blocks = grid.map:
+    case (pos, (block, name)) => name -> (block, pos)
 ```
 
 ### The issues with named blocks
@@ -1020,8 +1039,6 @@ There are many situations:
     - Move is disabled:
       - then change the selected position to the clicked position.
       - Update the block display if there is a block there.
-
-All of this can be handled inside the `World` class, Controller will just call it.
 
 #### Handling controls
 
