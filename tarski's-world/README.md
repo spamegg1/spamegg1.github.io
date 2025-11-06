@@ -31,6 +31,7 @@ Enjoy my silly design adventures and mistakes below!
     - [Implementing the world](#implementing-the-world)
   - [Interpreter](#interpreter)
     - [Evaluating formulas in worlds](#evaluating-formulas-in-worlds)
+    - [The problem with names missing from the world](#the-problem-with-names-missing-from-the-world)
   - [Controller](#controller)
     - [Reactor: a guide](#reactor-a-guide)
     - [Mouse input](#mouse-input)
@@ -467,7 +468,7 @@ multi-key maps of the same type, but not quite what I need.
 I guess what I *really* need here is a relational database... but screw that!
 
 Initially I ended up with a compromise of having TWO maps.
-The downside was that BOTH maps have to be updated every time something changes.
+The downside was that BOTH maps had to be updated every time something changed.
 
 Once again, named tuples:
 
@@ -583,11 +584,10 @@ Very boring CRUD-like operations:
 Here is just one example, a rather complicated one.
 The scenario is to click on an unnamed block on the grid, and add a name to it.
 Grid, blocks (by name) and available / occupied names all have to be updated.
-You can see the extra code caused by my double, no wait, now it's triple, `Map` design:
 
 ```scala
 // this is tricky; since fake names are also involved.
-def addNameToBlockAt(pos: Pos)(name: Name): World = grid.get(pos) match
+def addNameToBlockAt(pos: Pos, name: Name): World = grid.get(pos) match
   case None => this
   case Some((block, oldName)) => // make sure there is a block at position
     names.get(oldName) match
@@ -599,9 +599,8 @@ def addNameToBlockAt(pos: Pos)(name: Name): World = grid.get(pos) match
           case Some(Available) => // make sure the name is available
             val newBlock  = block.setLabel(name)
             val newGrid   = grid.updated(pos, (newBlock, name))
-            val newBlocks = blocks.removed(oldName).updated(name, (newBlock, pos))
             val newNames  = names.occupy(name)
-            copy(grid = newGrid, blocks = newBlocks, names = newNames)
+            copy(grid = newGrid, names = newNames)
 ```
 
 ## Interpreter
@@ -644,6 +643,56 @@ private def evalAtom(a: FOLAtom)(using b: Blocks): Boolean = a match
   case FOLAtom("=", Seq(FOLConst(c), FOLConst(d)))       => b(c).block == b(d).block
   case FOLAtom("SameRow", Seq(FOLConst(c), FOLConst(d))) => b(c).pos.sameRow(b(d).pos)
   // other cases...
+```
+
+### The problem with names missing from the world
+
+With an atomic formula like `Larger(c, d)`, for the lookups `b(c)` and `b(d)` to succeed,
+there has to be blocks in the world that occupy the names `c` and `d`.
+When the list of formulas included names that weren't on the board,
+the Interpreter was crashing with a "`NoSuchElementException`: key not found".
+
+So what should be the reasonable behavior here? Crash and blame it on the user?
+Tell the user "hey, you need to provide named blocks for all the names in formulas.
+Otherwise, enjoy your crash!" That is not a good solution.
+It would be better if the other formulas evaluate fine, but that one is not evaluated.
+For this, I have a `Status` enum:
+
+```scala
+enum Status:
+  case Ready, Valid, Invalid
+```
+
+`Ready` refers to "pending evaluation", the others correspond to true / false.
+
+To fix this, one idea is to use `b.get(c)` instead, which returns an `Option`.
+If no block with name `c` is found, then... do something!
+But we cannot do this in `eval` or `evalAtom` since they are recursive and `Boolean`.
+
+Instead, our good old friend from the imperative world, `try/catch` saves our skin.
+With a little help from our other old imperative friend, `var`.
+So we don't change anything in `eval` or `evalAtom` above.
+We let the program throw the exception in `eval`, or, "let it crash" 😆
+Instead, we catch the exception in an enclosing outer boundary that calls `eval`.
+This is done in the `handleEval` function in the Controller (read more below):
+
+```scala
+package tarski
+package controller
+
+// ...
+
+def handleEval(world: World): World =
+  val results = world.formulas.map: (formula, result) =>
+    var status = Ready
+    try
+      val bool = eval(formula)(using world.blocks) // let it crash!
+      status = if bool then Valid else Invalid
+    catch
+      case _: NoSuchElementException =>
+        status = Ready
+    formula -> status
+  world.copy(formulas = results)
 ```
 
 ## Controller
