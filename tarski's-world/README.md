@@ -1175,7 +1175,47 @@ View needs to:
 
 ### Imaging
 
-TODO
+What are the things we need to convert to images?
+
+- Blocks
+- Formulas
+- Evaluation results
+
+Normally I would have preferred to keep these as `.toImage` methods in each class,
+but for the sake of moving them out of Model and into View, I moved them out.
+
+Note the union type, and how we can do an exhaustive pattern match against it:
+
+```scala
+package tarski
+package view
+
+object Imager:
+  import Shape.*, Result.*
+  type Obj = Block | FOLFormula | Result
+
+  def apply(o: Obj): Image = o match
+    case b: Block =>
+      val shapeImg = b.shape match
+        case Tri => Image.triangle(b.size, b.size).fillColor(b.color)
+        case Squ => Image.square(b.size).fillColor(b.color)
+        case Cir => Image.circle(b.size).fillColor(b.color)
+      Text(b.label).font(TheFont).on(shapeImg)
+    case f: FOLFormula => Text(f.toString).font(TheFont)
+    case r: Result =>
+      r match
+        case Ready   => Text("  ?").font(TheFont).strokeColor(Blue)
+        case Valid   => Text("  T").font(TheFont).strokeColor(green)
+        case Invalid => Text("  F").font(TheFont).strokeColor(red)
+```
+
+This makes sense; if we had more than one View, we could easily turn this into a
+`trait Imager` with methods to be implemented. Then there could be multiple
+implementations that draw blocks in a weird, bendy way for example, or display formulas
+with different fonts or sizes, or use different symbols and colors for the results of
+evaluating formulas, and so on. The only contract being that it needs to convert these
+three types into images. So it's left open for extension but closed for modification,
+following the Open-Closed principle (O in SOLID).
 
 ### Rendering
 
