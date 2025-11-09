@@ -15,7 +15,7 @@ a {
 
 header {
     width: 160px;
-    margin: 10px 10px 0 0;
+    padding: 34px 25px 22px 20px;
 }
 
 header li {
@@ -40,4 +40,9 @@ header li:hover {
     background: -o-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
     background: -ms-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
     background: linear-gradient(to top, #674EA7 0%, #3D2E64 100%);
+}
+
+section {
+    width: 1000px;
+    padding-left: 160px;
 }
