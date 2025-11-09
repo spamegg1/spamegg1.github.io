@@ -13,7 +13,13 @@ a {
     text-decoration: none;
 }
 
+header {
+    width: 160px;
+}
+
 header li {
+    width: 150px;
+    height: 20px;
     background: #674EA7;
     background: -moz-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
     background: -webkit-gradient(linear, left top, left bottom, color-stop(0%, #f8f8f8), color-stop(100%, #dddddd));
@@ -33,4 +39,8 @@ header li:hover {
     background: -o-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
     background: -ms-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
     background: linear-gradient(to top, #674EA7 0%, #3D2E64 100%);
+}
+
+section {
+    max-width: max-content;
 }
