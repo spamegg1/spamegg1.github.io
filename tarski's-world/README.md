@@ -50,6 +50,7 @@ Enjoy my silly design adventures and mistakes below!
   - [View](#view)
     - [Imaging](#imaging)
     - [Rendering](#rendering)
+    - [Main renderer](#main-renderer)
     - [View or Model? (again): state of the controls](#view-or-model-again-state-of-the-controls)
       - [Initial approach: keep it in Model](#initial-approach-keep-it-in-model)
       - [Second attempt: the `Controls` class](#second-attempt-the-controls-class)
@@ -1222,6 +1223,40 @@ following the Open-Closed principle (O in SOLID).
 Made a lot of progress on rendering the controls (currently they do nothing):
 
 ![render-controls](renderingControls.png)
+
+Rendering is less modular, since the UI has to be designed in a certain, fixed way.
+Following the design of the picture above, I have to:
+
+- Place the board on the left half (at board origin):
+  - place the blocks on the board,
+  - place the selected position on the board.
+- Place the controls and the formulas on the right half:
+  - place controls above formulas (at controls origin)
+  - place formulas under it (at formulas origin).
+
+### Main renderer
+
+This lends itself to the following main rendering function:
+
+```scala
+def render(world: World): Image =
+  renderSelectedPos(world.controls.pos)
+    .on(renderBlocks(world.grid))
+    .at(BoardOrigin)
+    .on:
+      renderControls(world.controls)
+        .at(ControlsOrigin)
+    .on:
+      renderFormulas(world.formulas)
+        .at(FormulasOrigin)
+```
+
+Note that I am not using methods like `.above`, `.below` or `.beside`,
+using `.on` instead because the parts of the board are drawn with respect to
+Doodle's `Point` origin at `(0, 0)`, rather than relative to each other.
+Normally `.on` could result in two overlapping images stuck on top of each other
+(like using a decorative sticker on a surface), but since I'm using `.at` to place them
+in correct positions, they don't overlap.
 
 ### View or Model? (again): state of the controls
 
