@@ -4,7 +4,7 @@
 @import "{{ site.theme }}";
 
 body{
-    font-size: 16px;
+    font-size: 18px;
 }
 
 a {
@@ -42,5 +42,5 @@ header li:hover {
 }
 
 section {
-    max-width: max-content;
+    min-width: max-content;
 }
