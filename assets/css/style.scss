@@ -4,15 +4,44 @@
 @import "{{ site.theme }}";
 
 a {
-    color: #3D2E64;
-    font-weight: 400;
+    color: #674EA7;
+    font-weight: 800;
     text-decoration: none;
 }
 
 a.buttons {
-    background-color: #3D2E64;
+    background-color: #674EA7;
 }
 
 header li {
-    background: #3D2E64;
+    list-style-type: none;
+    width: 132px;
+    height: 15px;
+    margin-bottom: 12px;
+    line-height: 1em;
+    padding: 6px 6px 6px 7px;
+
+    background: #674EA7;
+    background: -moz-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
+    background: -webkit-gradient(linear, left top, left bottom, color-stop(0%, #f8f8f8), color-stop(100%, #dddddd));
+    background: -webkit-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
+    background: -o-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
+    background: -ms-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
+    background: linear-gradient(to top, #674EA7 0%, #3D2E64 100%);
+
+    border-radius: 4px;
+    border: 1px solid #0D0D0D;
+
+    -webkit-box-shadow: inset 0px 1px 1px 0 #3D2E64;
+    box-shadow: inset 0px 1px 1px 0 #3D2E64;
+}
+
+header li:hover {
+    background: #674EA7;
+    background: -moz-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
+    background: -webkit-gradient(linear, left top, left bottom, color-stop(0%, #f8f8f8), color-stop(100%, #dddddd));
+    background: -webkit-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
+    background: -o-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
+    background: -ms-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
+    background: linear-gradient(to top, #674EA7 0%, #3D2E64 100%);
 }
