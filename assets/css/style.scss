@@ -15,6 +15,7 @@ a {
 
 header {
     width: 160px;
+    margin: 10px 10px 0 0;
 }
 
 header li {
@@ -39,8 +40,4 @@ header li:hover {
     background: -o-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
     background: -ms-linear-gradient(top, #674EA7 0%, #3D2E64 100%);
     background: linear-gradient(to top, #674EA7 0%, #3D2E64 100%);
-}
-
-section {
-    max-width: 960px;
 }
