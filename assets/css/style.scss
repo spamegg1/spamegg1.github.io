@@ -41,8 +41,6 @@ header li:hover {
     background: linear-gradient(to top, #674EA7 0%, #3D2E64 100%);
 }
 
-@media print, screen and (max-width: 960px) {
-    section {
-        width: 960px;
-    }
+section {
+    max-width: 960px;
 }
