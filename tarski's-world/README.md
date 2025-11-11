@@ -60,6 +60,10 @@ Enjoy my silly design adventures and mistakes below!
     - [Dependency tree](#dependency-tree)
     - [Package declarations](#package-declarations)
   - [Moving from Doodle to ScalaFX, proper UI](#moving-from-doodle-to-scalafx-proper-ui)
+  - [Exposing the library to users](#exposing-the-library-to-users)
+    - [Issue with smaller screen sizes](#issue-with-smaller-screen-sizes)
+    - [Import / export issues](#import--export-issues)
+  - [Finally releasing the damn thing into the wild](#finally-releasing-the-damn-thing-into-the-wild)
   - [Work in progress](#work-in-progress)
 
 ## What is this?
@@ -1423,6 +1427,22 @@ There are ways around it, like wrapping things with `object`s and then exporting
 But that defeats the purpose, so I'll live with one or two `import`s.
 
 ## Moving from Doodle to ScalaFX, proper UI
+
+TODO
+
+## Exposing the library to users
+
+TODO
+
+### Issue with smaller screen sizes
+
+TODO
+
+### Import / export issues
+
+## Finally releasing the damn thing into the wild
+
+TODO
 
 ## Work in progress
 
