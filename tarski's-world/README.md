@@ -4,7 +4,7 @@ Working prototype, with some features missing:
 
 {% include video.html id="tarski.mp4" %}
 
-(Last updated November 9, 2025)
+(Last updated November 12, 2025)
 
 Enjoy my silly design adventures and mistakes below!
 
@@ -62,8 +62,16 @@ Enjoy my silly design adventures and mistakes below!
   - [Moving from Doodle to ScalaFX, proper UI](#moving-from-doodle-to-scalafx-proper-ui)
   - [Exposing the library to users](#exposing-the-library-to-users)
     - [Issue with smaller screen sizes](#issue-with-smaller-screen-sizes)
+      - [First approach: create a `Constants` class](#first-approach-create-a-constants-class)
+      - [Second approach: change `Size` to use an implicit `ScaleFactor`](#second-approach-change-size-to-use-an-implicit-scalefactor)
+      - [Third approach: make `Size` a `given`, then use conditional givens](#third-approach-make-size-a-given-then-use-conditional-givens)
     - [Import / export issues](#import--export-issues)
   - [Finally releasing the damn thing into the wild](#finally-releasing-the-damn-thing-into-the-wild)
+    - [Project name and versioning](#project-name-and-versioning)
+    - [Github releases](#github-releases)
+      - [Automating it with Github Actions](#automating-it-with-github-actions)
+    - [Releasing artifacts to Maven with Scala-cli](#releasing-artifacts-to-maven-with-scala-cli)
+      - [Automating the release with Github Actions](#automating-the-release-with-github-actions)
   - [Work in progress](#work-in-progress)
 
 ## What is this?
@@ -1432,7 +1440,37 @@ TODO
 
 ## Exposing the library to users
 
-TODO
+In an educational setting, the students will be given:
+
+- a grid (blocks placed on grid positions)
+  - possibly empty, the students might have to place the blocks themselves
+- a list of formulas
+  - possibly empty, the student might have to write the formulas themselves
+
+and then asked to run the program.
+
+I also have to take screen sizes into account (see below) with a scaling factor.
+Therefore:
+
+```scala
+package tarski
+package main
+
+// ...
+
+// Need to figure out a way to scale the graphics, somehow!
+def run(grid: Grid, formulas: Seq[FOLFormula], scaleFactor: Double = 1.0) =
+  val world = World(grid = grid, formulas = Formulas.fromSeq(formulas))
+  Reactor
+    .init[World](world)
+    .withOnTick(tick)
+    .withRender(render)
+    .withOnMouseClick(click)
+    .withOnMouseMove(move)
+    .withStop(stop)
+    .withTickRate(TickRate)
+    .animateWithFrame(MainFrame)
+```
 
 ### Issue with smaller screen sizes
 
@@ -1447,17 +1485,84 @@ Then the UI won't fit onto their screens!
 Now, we can simply change the `Size` value and all other values will adjust.
 In fact I tested this, and not only everything looks reasonable, but works too:
 
-Big:
-
-![big](big.png)
-
-Small:
+This one is quarter the size of the default, it's 800x400:
 
 ![small](small.png)
 
+So the `Size` value has to be adjustable by the user.
+We have dozens of constants, which depend on one constant, which needs to change.
+If I change `Size` from a `val` to a `def`, I get over 50 compiler errors! 😱
+
+It's not just the constants that depend on `Size`.
+All the modules (model, view, controller, testing, main) depend on these constants.
+So the `Size` has to be passed down to ALL of them!
+This means adding a parameter in 50 different places!
+
+For example, the `Converter` above depends on `Dimensions` which are derived from `Size`.
+Also anything that depends on `Small, Mid, Large` sizes depend on `Size`.
+This includes not only View components like Imager and Renderer, but even the Interpreter!
+
+***This is quite a difficult problem to solve.***
+
+Of course if I simply accept the boilerplate and the bloat, it IS solvable.
+But I'd like to try different approaches to see which keeps boilerplate to a minimum.
+
+#### First approach: create a `Constants` class
+
+TODO
+
+#### Second approach: change `Size` to use an implicit `ScaleFactor`
+
+TODO
+
+#### Third approach: make `Size` a `given`, then use conditional givens
+
+In this approach, various things that depend on `Size` will be derived from it.
+For example, if `Converter` needs `Dimensions`, it will be a conditional given.
+Or if `Imager` needs `Small/Mid/Large` then it will be a given derived from `Size`.
+
+TODO
+
 ### Import / export issues
 
+Since students need the grid, the formulas and the ability to run it, they need to import:
+
+- the ability to code blocks:
+  - `Block`
+  - `Shape`
+  - `Size`
+  - `doodle.core.Color`
+- the ability to code FOL formulas:
+  - `gapt.expr.formula.fol.FOLFormula`
+  - also the string interpolators `gapt.expr.stringInterpolationForExpressions`
+- the ability to run:
+  - `doodle.reactor.Reactor`
+
+To minimize students' importing effort, I need to place them all into a module,
+something like `tarski.main` and bulk export them, so they can simply use:
+`import tarski.main.*` or something like that.
+
+TODO
+
 ## Finally releasing the damn thing into the wild
+
+### Project name and versioning
+
+TODO
+
+### Github releases
+
+TODO
+
+#### Automating it with Github Actions
+
+TODO
+
+### Releasing artifacts to Maven with Scala-cli
+
+TODO
+
+#### Automating the release with Github Actions
 
 TODO
 
