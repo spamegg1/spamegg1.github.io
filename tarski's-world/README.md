@@ -1436,7 +1436,24 @@ TODO
 
 ### Issue with smaller screen sizes
 
-TODO
+Currently everything is designed with global constants.
+Screen size, font size, the blocks, everything flow from one constant `Size`.
+It is set to `100.0`, which makes the UI size 1600x800 by default.
+
+What if people are using Tarski on lower resolutions?
+Such as the popular 1366x768 resolution present in many laptops?
+Then the UI won't fit onto their screens!
+
+Now, we can simply change the `Size` value and all other values will adjust.
+In fact I tested this, and not only everything looks reasonable, but works too:
+
+Big:
+
+![big](big.png)
+
+Small:
+
+![small](small.png)
 
 ### Import / export issues
 
