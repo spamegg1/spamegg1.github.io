@@ -62,9 +62,14 @@ Enjoy my silly design adventures and mistakes below!
   - [Moving from Doodle to ScalaFX, proper UI](#moving-from-doodle-to-scalafx-proper-ui)
   - [Exposing the library to users](#exposing-the-library-to-users)
     - [Issue with smaller screen sizes](#issue-with-smaller-screen-sizes)
-      - [First approach: create a `Constants` class](#first-approach-create-a-constants-class)
+      - [First approach: make `Size` a `given`, then use conditional givens](#first-approach-make-size-a-given-then-use-conditional-givens)
       - [Second approach: change `Size` to use an implicit `ScaleFactor`](#second-approach-change-size-to-use-an-implicit-scalefactor)
-      - [Third approach: make `Size` a `given`, then use conditional givens](#third-approach-make-size-a-given-then-use-conditional-givens)
+      - [Understanding the problem a bit better](#understanding-the-problem-a-bit-better)
+      - [A "singleton object with an implicit parameter"?](#a-singleton-object-with-an-implicit-parameter)
+      - [Third approach: create a `Constants` class](#third-approach-create-a-constants-class)
+      - [A trick: singleton object plus extension methods](#a-trick-singleton-object-plus-extension-methods)
+      - [Too many extension methods](#too-many-extension-methods)
+      - [Final approach: use a combination of approaches](#final-approach-use-a-combination-of-approaches)
     - [Import / export issues](#import--export-issues)
   - [Finally releasing the damn thing into the wild](#finally-releasing-the-damn-thing-into-the-wild)
     - [Project name and versioning](#project-name-and-versioning)
@@ -1491,7 +1496,9 @@ This one is quarter the size of the default, it's 800x400:
 
 So the `Size` value has to be adjustable by the user.
 We have dozens of constants, which depend on one constant, which needs to change.
-If I change `Size` from a `val` to a `def`, I get over 50 compiler errors! 😱
+If I change `Size` from a `val` to a `def`, I get close to 50 compiler errors! 😱
+
+![errors](errors.png)
 
 It's not just the constants that depend on `Size`.
 All the modules (model, view, controller, testing, main) depend on these constants.
@@ -1505,23 +1512,228 @@ This includes not only View components like Imager and Renderer, but even the In
 ***This is quite a difficult problem to solve.***
 
 Of course if I simply accept the boilerplate and the bloat, it IS solvable.
-But I'd like to try different approaches to see which keeps boilerplate to a minimum.
+But I'd like to try keeping boilerplate to a minimum.
 
-#### First approach: create a `Constants` class
-
-TODO
-
-#### Second approach: change `Size` to use an implicit `ScaleFactor`
-
-TODO
-
-#### Third approach: make `Size` a `given`, then use conditional givens
+#### First approach: make `Size` a `given`, then use conditional givens
 
 In this approach, various things that depend on `Size` will be derived from it.
 For example, if `Converter` needs `Dimensions`, it will be a conditional given.
 Or if `Imager` needs `Small/Mid/Large` then it will be a given derived from `Size`.
 
-TODO
+```scala
+package tarski
+package constants
+
+opaque type Size = Double
+given Size = 100.0
+```
+
+This requires passing it everywhere as a `using` parameter:
+
+```scala
+def StrokeW(using size: Size)     = size * 0.08
+def Pts(using size: Size)         = size * 0.25
+def Height(using size: Size)      = size * 8.0
+def Width(using size: Size)       = Height * 2.0
+def Small(using size: Size)       = size * 0.4
+def Mid(using size: Size)         = size * 0.7
+def Large(using size: Size)       = size * 0.95
+def SmallStroke(using size: Size) = StrokeW * 0.25
+def UIBottom(using size: Size)    = Height * 0.375
+// ... many more
+```
+
+Then conditional givens in various places where it's needed:
+
+```scala
+given Size => BoardDimensions =
+  (s: Size) =>
+    (h = constants.Height, w = constants.Width * 0.5)
+
+given Size => UIDimensions =
+  (s: Size) =>
+    (h = Height * 0.125, w = Width * 0.5)
+```
+
+The disadvantages are:
+
+- lots of `using Size` everywhere
+- lots of conditional givens
+- lots of implicits can make things hard to understand
+- potential issues of clashing with other implicits
+
+#### Second approach: change `Size` to use an implicit `ScaleFactor`
+
+```scala
+def Size(using scaleFactor: Double) = 100.0 * scaleFactor
+```
+
+This is really not much of an improvement over the previous one.
+Kicking the can down the road, so to speak. Same issues.
+
+#### Understanding the problem a bit better
+
+This is an interesting design problem; we have tons of *constants*
+which all depend on *one variable*,
+and even the variable itself doesn't change once it is set.
+So there will never be more than one instance of this variable...
+
+#### A "singleton object with an implicit parameter"?
+
+What we really need is a singleton object!
+We want to reduce the `(using ...)` that is plastered everywhere 50 times.
+But... unfortunately singleton objects cannot take parameters (explicit or implicit):
+
+```scala
+// not legal in Scala
+object Constants(using size: Double):
+  // ... stuff goes here
+```
+
+So, is a traditional class approach the only way?
+
+#### Third approach: create a `Constants` class
+
+```scala
+case class Constants(size: Double):
+  val StrokeW       = size * 0.08
+  val Pts           = size * 0.25
+  val Height        = size * 8.0
+  val Width         = Height * 2.0
+  // ...
+
+  // basic shapes
+  val SmallSq = Image.square(Pts)
+  val Sqr     = Image.square(size)
+  val WhiteSq = Sqr.fillColor(white)
+  val BlackSq = Sqr.fillColor(black)
+  // ...
+
+  val MainFrame = Frame.default
+    .withSize(Width, Height)
+    .withBackground(BgColor)
+    .withTitle(Title)
+    .withCenterAtOrigin
+```
+
+The downsides are:
+
+- still having to pass around `(using Constants)` everywhere (more on that below)
+- the intent is obscured a bit: there shouldn't be multiple instances of this class!
+
+#### A trick: singleton object plus extension methods
+
+There IS a way to avoid this `class` approach: a singleton object plus extension methods.
+The key part of the trick is the type of the singleton object: `Constants.type`.
+
+```scala
+object Constants
+
+extension (c: Constants.type)(using s: Size)
+  def StrokeW       = size * 0.08
+  def Pts           = size * 0.25
+  def Height        = size * 8.0
+  def Width         = Height * 2.0
+  // ... many more
+```
+
+This avoids plastering `(using ...)` everywhere, thanks to bulk extension syntax.
+Just only one at the top, like the class approach.
+
+I did think about extension methods, but `Constants.type` would have never occurred to me.
+I found it by [asking the community for advice](https://users.scala-lang.org/t/solved-weird-design-problem-looking-for-advice/12122).
+
+This made importing / exporting a bit cumbersome.
+In this approach, both the object and the extension methods have to be imported
+by their own individual names, like
+
+```scala
+import tarski.constants.Constants
+import tarski.constants.StrokeW
+```
+
+rather than the name of the object followed by the method, like
+
+```scala
+import tarski.constants.Constants.StrokeW
+```
+
+or rather than just importing `Constants` then using `Constants.StrokeW`.
+
+There is a way around that too: place the extension methods directly in the object:
+
+```scala
+object Constants:
+  extension (c: Constants.type)(using size: Double)
+    def StrokeW = size * 0.08
+    def Pts     = size * 0.25
+    def Height  = size * 8.0
+    def Width   = Height(c) * 2.0
+    // ... many more
+```
+
+Notice how `Height` is called: it's NOT `c.Height` (errors) but `Height(c)`.
+
+The downsides are:
+
+- extensions do not allow `val`, they have to be `def`.
+  So, the same CONSTANTS will have to be re-evaluated many times...
+- we cannot span this across multiple files.
+
+#### Too many extension methods
+
+This works fine for the `Constants`.
+However it does not work for other parts of the code, such as the `Renderer`.
+
+The biggest problem is this: I have TOO MANY methods which need to be split
+into multiple files. The `object Renderer:` definition cannot span multiple files!
+For each file, I would have to use a different singleton object.
+Or, extension methods would be outside the object,
+and I'd have to accept the downsides of importing / exporting.
+
+Also, this is getting a bit too roundabout and convoluted for my taste.
+It complicates things and obscures the intent a bit too much.
+
+#### Final approach: use a combination of approaches
+
+Finally I went with the class approach, but still using the extensions in some places.
+If I have too many `val`s, and I don't want them re-evaluated, use the class.
+If `def` is OK and the scope is small (one file), then go with extensions.
+
+For example, I have the UI grid mapping from before.
+The object / extension trick lets me clean up a lot of `(using ...)` clauses,
+without defining a class (which would have only 1 instance, ever):
+
+Before:
+
+```scala
+def evalPt(using Constants)  = ControlsConverter.toPointShiftX(controlGrid("Eval"))
+def movePt(using Constants)  = ControlsConverter.toPointShiftX(controlGrid("Move"))
+// many more...
+def bluePt(using Constants)  = ControlsConverter.toPoint(controlGrid("Blue"))
+def greenPt(using Constants) = ControlsConverter.toPoint(controlGrid("Green"))
+// many more...
+def blockPt(using Constants) = ControlsConverter.toPointShiftY(controlGrid("Block"))
+```
+
+After:
+
+```scala
+object UI
+
+extension (uio: UI.type)(using Constants)
+  def evalPt  = Converter.ui.toPointX(UIGrid("Eval"))
+  def movePt  = Converter.ui.toPointX(UIGrid("Move"))
+  // many more...
+  def bluePt  = Converter.ui.toPoint(UIGrid("Blue"))
+  def greenPt = Converter.ui.toPoint(UIGrid("Green"))
+  // many more...
+  def blockPt = Converter.ui.toPointY(UIGrid("Block"))
+```
+
+This is very nice! 🥳
+Note that I intended to use these as `UI.evalPt` etc.,
+so the importing downside does not matter here.
 
 ### Import / export issues
 
