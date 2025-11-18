@@ -4,7 +4,7 @@ Working prototype, with some features missing:
 
 {% include video.html id="tarski.mp4" %}
 
-(Last updated November 12, 2025)
+(Last updated November 18, 2025)
 
 Enjoy my silly design adventures and mistakes below!
 
@@ -1734,6 +1734,7 @@ extension (uio: UI.type)(using Constants)
 This is very nice! 🥳
 Note that I intended to use these as `UI.evalPt` etc.,
 so the importing downside does not matter here.
+The `val` downside is not relevant either, since these all have to be `def`s anyway.
 
 ### Import / export issues
 
