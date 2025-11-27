@@ -72,11 +72,13 @@ Enjoy my silly design adventures and mistakes below!
       - [Final approach: use a combination of approaches](#final-approach-use-a-combination-of-approaches)
     - [Import / export issues](#import--export-issues)
   - [Finally releasing the damn thing into the wild](#finally-releasing-the-damn-thing-into-the-wild)
+    - [Adding library ScalaDoc comments](#adding-library-scaladoc-comments)
+    - [Generating documentation to be uploaded to javadoc.io](#generating-documentation-to-be-uploaded-to-javadocio)
     - [Project name and versioning](#project-name-and-versioning)
     - [Github releases](#github-releases)
-      - [Automating it with Github Actions](#automating-it-with-github-actions)
+    - [Automating Github releases with Github Actions](#automating-github-releases-with-github-actions)
     - [Releasing artifacts to Maven with Scala-cli](#releasing-artifacts-to-maven-with-scala-cli)
-      - [Automating the release with Github Actions](#automating-the-release-with-github-actions)
+    - [Automating the artifact release with Github Actions](#automating-the-artifact-release-with-github-actions)
   - [Work in progress](#work-in-progress)
 
 ## What is this?
@@ -1759,6 +1761,14 @@ TODO
 
 ## Finally releasing the damn thing into the wild
 
+### Adding library ScalaDoc comments
+
+TODO
+
+### Generating documentation to be uploaded to javadoc.io
+
+TODO
+
 ### Project name and versioning
 
 TODO
@@ -1767,7 +1777,7 @@ TODO
 
 TODO
 
-#### Automating it with Github Actions
+### Automating Github releases with Github Actions
 
 TODO
 
@@ -1775,7 +1785,7 @@ TODO
 
 TODO
 
-#### Automating the release with Github Actions
+### Automating the artifact release with Github Actions
 
 TODO
 
