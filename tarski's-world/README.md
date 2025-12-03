@@ -4,7 +4,7 @@ Working prototype, with some features missing:
 
 {% include video.html id="tarski.mp4" %}
 
-(Last updated November 18, 2025)
+(Last updated December 03, 2025)
 
 Enjoy my silly design adventures and mistakes below!
 
