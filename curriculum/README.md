@@ -53,3 +53,9 @@ Useful byproducts continue:
 - *November 2025:* Tarski is almost finished! Working prototype:
 
 {% include video.html id="tarski.mp4" %}
+
+- *December 2025:* The first version of Tarski is [released!](https://github.com/spamegg1/tarski)
+
+***Year 4 (2026):***
+
+Stay tuned!
