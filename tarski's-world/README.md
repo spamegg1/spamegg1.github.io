@@ -70,15 +70,17 @@ Enjoy my silly design adventures and mistakes below!
       - [A trick: singleton object plus extension methods](#a-trick-singleton-object-plus-extension-methods)
       - [Too many extension methods](#too-many-extension-methods)
       - [Final approach: use a combination of approaches](#final-approach-use-a-combination-of-approaches)
+      - [Silly fun with different rows and columns](#silly-fun-with-different-rows-and-columns)
     - [Import / export issues](#import--export-issues)
+    - [Font issues](#font-issues)
+      - [Bundling the font](#bundling-the-font)
   - [Finally releasing the damn thing into the wild](#finally-releasing-the-damn-thing-into-the-wild)
     - [Adding library ScalaDoc comments](#adding-library-scaladoc-comments)
     - [Generating documentation to be uploaded to javadoc.io](#generating-documentation-to-be-uploaded-to-javadocio)
     - [Project name and versioning](#project-name-and-versioning)
     - [Github releases](#github-releases)
-    - [Automating Github releases with Github Actions](#automating-github-releases-with-github-actions)
     - [Releasing artifacts to Maven with Scala-cli](#releasing-artifacts-to-maven-with-scala-cli)
-    - [Automating the artifact release with Github Actions](#automating-the-artifact-release-with-github-actions)
+    - [Automating releases with Github Actions](#automating-releases-with-github-actions)
   - [Work in progress](#work-in-progress)
 
 ## What is this?
@@ -1738,6 +1740,19 @@ Note that I intended to use these as `UI.evalPt` etc.,
 so the importing downside does not matter here.
 The `val` downside is not relevant either, since these all have to be `def`s anyway.
 
+#### Silly fun with different rows and columns
+
+Just for silly fun, I also made it so that the number of rows and columns are
+adjustable, although this will never be used:
+
+![weird-1](weird-size-1.png)
+
+![weird-2](weird-size-2.png)
+
+![weird-3](weird-size-3.png)
+
+Obviously, some items (formulas, block display) won't fit in this case! 😆
+
 ### Import / export issues
 
 Since students need the grid, the formulas and the ability to run it, they need to import:
@@ -1753,31 +1768,172 @@ Since students need the grid, the formulas and the ability to run it, they need 
 - the ability to run:
   - `doodle.reactor.Reactor`
 
-To minimize students' importing effort, I need to place them all into a module,
-something like `tarski.main` and bulk export them, so they can simply use:
-`import tarski.main.*` or something like that.
+To minimize students' importing effort, I placed them all into a module,
+`tarski.main` and bulk exported them, so they can simply use: `import tarski.main.*`.
 
-TODO
+### Font issues
+
+I noticed that most fonts available to Doodle cannot show all logical symbols correctly,
+or they don't look very nice. When it does look nice and displays everything right,
+I could not be sure if users would have the same fonts on their systems as I do.
+So I started testing one of my releases in a virtual machine where I uninstalled all
+the fonts that I could without breaking the OS completely. Here are some examples:
+
+This is the default Sans Serif font, the quantifiers look weird
+and the title is missing:
+
+![fonts-1](fonts-1.png)
+
+This is the default Serif font, the title is missing again
+(because I uninstalled all fonts):
+
+![fonts-2](fonts-2.png)
+
+This is Segoe UI, it's missing the quantifiers:
+
+![fonts-3](fonts-3.png)
+
+This one looks good, except it's missing the biconditional symbol `↔`.
+It's missing on the first, topmost formula right after `Squ(x)`:
+
+![fonts-4](fonts-4.png)
+
+It just so happens that DejaVu Sans is free and can be included in a project.
+So I had to figure out how to bundle it into my releases.
+
+#### Bundling the font
+
+It worked fine on my own file system when loaded via:
+
+```scala
+val FontFile = java.io.File("font/DejaVuSans.tff")
+```
+
+I accidentally released this, it does not work for users... so I have a broken release! 😆
+
+[Noel Welsh](https://github.com/noelwelsh) helped me out a lot for this on Discord.
+This is the documentation for bundling a font with the application:
+[Oracle docs](https://docs.oracle.com/javase/tutorial/2d/text/fonts.html#bundling-physical-fonts-with-your-application)
+
+The font has to be loaded, derived, then registered with the graphics environment.
+That's the only way it's available without relying on OS fonts.
+If any of these steps is missing, it will fall back on an OS font, and look wrong.
+
+For the class loader to find it, it cannot be a `java.io.File` like above,
+but has to be an `InputStream` coming from the resources directory instead.
+That way, it *can* work on users' machines:
+
+```scala
+// Load the file
+val FontFile = getClass.getResourceAsStream("/DejaVuSans.ttf")
+
+// Create a font object then derive the font
+val FontFromFile = java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, FontFile)
+val DerivedFont = FontFromFile.deriveFont(Pts)
+
+// Register it with the graphics environment
+val ge = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+ge.registerFont(DerivedFont)
+
+// Finally, pass it to Doodle
+val Family = DerivedFont.getFamily()
+val TheFont = doodle.core.font.Font(
+  FontFamily.named(Family),
+  FontStyle.normal,
+  FontWeight.normal,
+  FontSize.points(Pts)
+)
+```
+
+The `getResourceAsStream("/DejaVuSans.ttf")` here was a nightmare to work with.
+It took a ton of searching online and reaching out on Discord to finally nail down
+the correct syntax. I even spent hours step-debugging `.createFont`. It wasn't:
+
+- `resources/DejaVuSans.tff`
+- `/resources/DejaVuSans.tff`
+- `./resources/DejaVuSans.tff`
+- `DejaVuSans.tff`
+- `./DejaVuSans.tff`
+
+but it was `/DejaVuSans.tff` instead... 😠 💢
+
+It was throwing a very unhelpful exception `Problem reading font data.` What?
+Lots of searching online, lots of bug reports, and the authors said that the real reason
+for the crash is *deliberately hidden* for security reasons:
+
+![wont-fix](wont-fix.png)
+
+Then we need to tell [Scala-cli](https://scala-cli.virtuslab.org/) to find it:
+
+```scala
+//> using resourceDir ./font
+```
+
+and place it in the root directory of the project as `./font/DejaVuSans.tff`,
+along with its license file (required). Finally done!
+
+This is DejaVu Sans bundled and loaded correctly on the VM, this is what we want!
+
+![fonts-good](fonts-good.png)
 
 ## Finally releasing the damn thing into the wild
 
+Here comes the scary part! 😱
+
 ### Adding library ScalaDoc comments
 
-TODO
+To have nice documentation inside an IDE for users of the library, we need to add
+[comments](https://docs.scala-lang.org/overviews/scaladoc/for-library-authors.html).
+They need to follow a certain format, but this is handled nicely by my IDE:
+
+![doc-comments](doc-comments.png)
+
+That generates a description to be filled in, and the parameters:
+
+```scala
+/**
+  * PUT STUFF HERE
+  *
+  * @param grid and here
+  * @param formulas and here
+  * @param scaleFactor and here...
+  */
+def runWorld(grid: Grid, formulas: Seq[FOLFormula], scaleFactor: Double = 1.0) =
+```
+
+I went through everything in my repository and added comments. Lots of boring work.
 
 ### Generating documentation to be uploaded to javadoc.io
 
-TODO
+Upon publishing to Maven, the generated `doc.jar` will be picked up by
+[Javadoc](https://javadoc.io/) in a few hours. To make sure everything was OK,
+I generated docs locally with:
+
+```scala
+❯ scala doc . -f
+Compiling project (Scala 3.7.4, JVM (24))
+Compiled project (Scala 3.7.4, JVM (24))
+Flag -classpath set repeatedly
+1 warning found
+Wrote Scaladoc to ./scala-doc
+```
+
+Doc comments can have links inside double brackets to link to other modules or objects:
+
+```scala
+/** Default numbers of rows and columns of the board. Used in [[controller.Converter]]. */
+val BoardSize = (rows = BoardRows, cols = BoardCols)
+```
+
+If the contents of a link such as `[[controller.Converter]]` are wrong, the `scala doc`
+command will give an error. So I make sure all of them are correct and can be found.
 
 ### Project name and versioning
 
-TODO
+To publish easily in an automated way, we have to stick to [semver](https://semver.org/),
+and we need to stick to a default name format `io.github.<username>.<projectname>`.
 
 ### Github releases
-
-TODO
-
-### Automating Github releases with Github Actions
 
 TODO
 
@@ -1785,7 +1941,7 @@ TODO
 
 TODO
 
-### Automating the artifact release with Github Actions
+### Automating releases with Github Actions
 
 TODO
 
