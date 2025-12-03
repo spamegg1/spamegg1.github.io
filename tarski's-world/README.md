@@ -79,6 +79,7 @@ Enjoy my silly design adventures and mistakes below!
     - [Generating documentation to be uploaded to javadoc.io](#generating-documentation-to-be-uploaded-to-javadocio)
     - [Project name and versioning](#project-name-and-versioning)
     - [Github releases](#github-releases)
+    - [Local publishing](#local-publishing)
     - [Releasing artifacts to Maven with Scala-cli](#releasing-artifacts-to-maven-with-scala-cli)
     - [Automating releases with Github Actions](#automating-releases-with-github-actions)
   - [Work in progress](#work-in-progress)
@@ -1933,17 +1934,151 @@ command will give an error. So I make sure all of them are correct and can be fo
 To publish easily in an automated way, we have to stick to [semver](https://semver.org/),
 and we need to stick to a default name format `io.github.<username>.<projectname>`.
 
+For each version, we need a corresponding Git tag.
+
+```bash
+❯ git tag --sign v0.1.0
+❯ git tag --verify v0.1.0
+❯ git push origin v0.1.0
+```
+
+There are also snapshot versions that serve as a "safety net" before you commit
+to the actual release, just in case there are some last minute bugs.
+You just follow the tag with `-SNAPSHOT`, like: `v0.1.0-SNAPSHOT`.
+
 ### Github releases
 
-TODO
+Then you have to push the tag, just like a commit, except it does not push any code.
+When you push a tag, it will appear on your Github page, which then you can "upgrade"
+to a proper release:
+
+![tags](tags.png)
+
+![release](release.png)
+
+### Local publishing
+
+For safety, first you can publish locally:
+
+```bash
+❯ scala config power true
+❯ scala publish local .
+```
+
+It will ask you for [required info](https://scala-cli.virtuslab.org/docs/commands/publishing/publish#required-settings).
+You can provide them in `project.scala` as using directives (see below).
+
+This will place a `SNAPSHOT` release in `~/.ivy2/local/io.github.spamegg1/tarski_3`.
 
 ### Releasing artifacts to Maven with Scala-cli
 
-TODO
+This is the awful, painful part. Someone on Discord likened it to a colonoscopy. 🤮
+
+There is a very long and complicated guide on
+[Scala website](https://docs.scala-lang.org/overviews/contributors/index.html).
+It does not help that this is all focused on SBT and its plugins.
+
+There are 4 secrets you have to set up on your repository:
+
+![repo-secrets](repo-secrets.png)
+
+You also need to setup an account with Sonatype, and reserve a namespace.
+Thankfully this is significantly simplified if you just use your Github account.
+You get an automatically verified namespace:
+
+![notifications](notifications.png)
+
+![namespace](namespace.png)
+
+Then you need to provide Scala-cli the necessary information:
+
+```scala
+//> using publish.organization io.github.spamegg1
+//> using publish.name tarski
+//> using publish.license Apache-2.0
+//> using publish.computeVersion git:tag
+//> using publish.developers "spamegg1|Spamegg|https://github.com/spamegg1"
+//> using publish.url https://github.com/spamegg1/tarski
+//> using publish.vcs github:spamegg1/tarski
+//> using publish.repository central
+//> using publish.user env:SONATYPE_USERNAME
+//> using publish.password env:SONATYPE_PASSWORD
+//> using publish.secretKey env:PGP_SECRET
+//> using publish.secretKeyPassword env:PGP_PASSPHRASE
+```
+
+I had a lot of issues with the GPG signing. Scala-cli does not import your GPG key.
+I reached out on Discord, Anton Sviridov helped out with his import
+[script](https://github.com/indoorvivants/decline-derive/blob/main/.github/workflows/import-gpg.sh)
+which fixed the issue.
+
+No matter how hard I tried, I could not make the
+[GPG signing](https://scala-cli.virtuslab.org/docs/commands/publishing/publish#gpg) work.
+Something like this does not work:
+
+```scala
+//> using publish.gpgKey A467BFB403160D9F
+```
+
+Eventually I gave up on that, so I think Scala-cli now uses the default signing with
+[Bouncy Castle](https://scala-cli.virtuslab.org/docs/commands/publishing/publish#bouncy-castle).
+Not sure 🤷
 
 ### Automating releases with Github Actions
 
-TODO
+I already had a Github workflow for any code push, which checks formatting and runs tests.
+So I had to make sure that publishing does not happen with every push.
+There is a way to do that: use the `tag:` property to trigger a workflow only when
+the push has a certain tag that starts with `v`:
+
+```yaml
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v6.0.0
+      with:
+        fetch-depth: 0
+    - uses: coursier/cache-action@v7.0.0
+    - uses: VirtusLab/scala-cli-setup@v1.10.1
+    - run: |
+        ./.github/workflows/import-gpg.sh
+          scala-cli --power publish .
+      env:
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+```
+
+This requires TWO workflow files; in my regular format and check workflow, I need to
+use the opposite of this, and *ignore* any tags that start with `v`.
+Notice there is no GPG importing or publishing here:
+
+```scala
+on:
+  push:
+    branches:
+      - master
+    tags-ignore:
+      - v*
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v6.0.0
+      with:
+        fetch-depth: 0
+    - uses: coursier/cache-action@v7.0.0
+    - uses: VirtusLab/scala-cli-setup@v1.10.1
+    - run: scala-cli --power format --check && scala-cli --power test .
+```
 
 ## Work in progress
 
