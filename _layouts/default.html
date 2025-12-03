@@ -26,7 +26,7 @@
         {% endfor %}
       </ul>
 
-      <img src="https://github.com/spamegg1.png">
+      <a href="{{ site.github.owner_url }}"><img src="https://github.com/spamegg1.png"></a>
       <!-- <h1 class="header">{{ site.title | default: site.github.repository_name }}</h1> -->
       <!-- <p class="header">{{ site.description | default: site.github.project_tagline }}</p> -->
 
@@ -43,11 +43,11 @@
           site.github.owner_name }}</a></p>
       {% endif %}
 
-      {% if site.github.is_user_page %}
+      <!-- {% if site.github.is_user_page %}
       <ul>
         <li><a class="buttons github" href="{{ site.github.owner_url }}">GitHub Profile</a></li>
       </ul>
-      {% endif %}
+      {% endif %} -->
     </header>
 
     <section>
