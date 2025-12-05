@@ -4,7 +4,7 @@ Working prototype, with some features missing:
 
 {% include video.html id="tarski.mp4" %}
 
-(Last updated December 03, 2025)
+(Last updated December 05, 2025)
 
 Enjoy my silly design adventures and mistakes below!
 
@@ -82,6 +82,8 @@ Enjoy my silly design adventures and mistakes below!
     - [Local publishing](#local-publishing)
     - [Releasing artifacts to Maven with Scala-cli](#releasing-artifacts-to-maven-with-scala-cli)
     - [Automating releases with Github Actions](#automating-releases-with-github-actions)
+  - [Companion repository](#companion-repository)
+  - [What's next](#whats-next)
   - [Work in progress](#work-in-progress)
 
 ## What is this?
@@ -1485,7 +1487,7 @@ def run(grid: Grid, formulas: Seq[FOLFormula], scaleFactor: Double = 1.0) =
 ### Issue with smaller screen sizes
 
 Currently everything is designed with global constants.
-Screen size, font size, the blocks, everything flow from one constant `Size`.
+Screen size, font size, the blocks, everything flows from one constant `Size`.
 It is set to `100.0`, which makes the UI size 1600x800 by default.
 
 What if people are using Tarski on lower resolutions?
@@ -1795,7 +1797,7 @@ This is Segoe UI, it's missing the quantifiers:
 ![fonts-3](fonts-3.png)
 
 This one looks good, except it's missing the biconditional symbol `↔`.
-It's missing on the first, topmost formula right after `Squ(x)`:
+It's missing on the first, topmost formula right after `Squ(y)`:
 
 ![fonts-4](fonts-4.png)
 
@@ -1807,12 +1809,12 @@ So I had to figure out how to bundle it into my releases.
 It worked fine on my own file system when loaded via:
 
 ```scala
-val FontFile = java.io.File("font/DejaVuSans.tff")
+val FontFile = java.io.File("font/DejaVuSans.ttf")
 ```
 
 I accidentally released this, it does not work for users... so I have a broken release! 😆
 
-[Noel Welsh](https://github.com/noelwelsh) helped me out a lot for this on Discord.
+[Noel Welsh](https://github.com/noelwelsh) helped me out a lot with this on Discord.
 This is the documentation for bundling a font with the application:
 [Oracle docs](https://docs.oracle.com/javase/tutorial/2d/text/fonts.html#bundling-physical-fonts-with-your-application)
 
@@ -1850,13 +1852,13 @@ The `getResourceAsStream("/DejaVuSans.ttf")` here was a nightmare to work with.
 It took a ton of searching online and reaching out on Discord to finally nail down
 the correct syntax. I even spent hours step-debugging `.createFont`. It wasn't:
 
-- `resources/DejaVuSans.tff`
-- `/resources/DejaVuSans.tff`
-- `./resources/DejaVuSans.tff`
-- `DejaVuSans.tff`
-- `./DejaVuSans.tff`
+- `resources/DejaVuSans.ttf`
+- `/resources/DejaVuSans.ttf`
+- `./resources/DejaVuSans.ttf`
+- `DejaVuSans.ttf`
+- `./DejaVuSans.ttf`
 
-but it was `/DejaVuSans.tff` instead... 😠 💢
+but it was `/DejaVuSans.ttf` instead... 😠 💢
 
 It was throwing a very unhelpful exception `Problem reading font data.` What?
 Lots of searching online, lots of bug reports, and the authors said that the real reason
@@ -1870,7 +1872,7 @@ Then we need to tell [Scala-cli](https://scala-cli.virtuslab.org/) to find it:
 //> using resourceDir ./font
 ```
 
-and place it in the root directory of the project as `./font/DejaVuSans.tff`,
+and place it in the root directory of the project as `./font/DejaVuSans.ttf`,
 along with its license file (required). Finally done!
 
 This is DejaVu Sans bundled and loaded correctly on the VM, this is what we want!
@@ -2031,7 +2033,7 @@ So I had to make sure that publishing does not happen with every push.
 There is a way to do that: use the `tag:` property to trigger a workflow only when
 the push has a certain tag that starts with `v`:
 
-```yaml
+```yml
 on:
   push:
     tags:
@@ -2056,8 +2058,8 @@ jobs:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
 ```
 
-This requires TWO workflow files; in my regular format and check workflow, I need to
-use the opposite of this, and *ignore* any tags that start with `v`.
+This requires TWO workflow files; in my regular format and check workflow,
+I need to use the opposite of this, and *ignore* any tags that start with `v`.
 Notice there is no GPG importing or publishing here:
 
 ```scala
@@ -2079,6 +2081,29 @@ jobs:
     - uses: VirtusLab/scala-cli-setup@v1.10.1
     - run: scala-cli --power format --check && scala-cli --power test .
 ```
+
+## Companion repository
+
+I started writing some exercises on a
+[companion repository](https://github.com/spamegg1/tarski-examples).
+
+This repository is a *user* of the library; students are meant to clone it to their own
+machines and run it in VS Code or IntelliJ to work through the exercises.
+
+## What's next
+
+I recently became aware of "Hyperproof", a way to write proofs by using visual diagrams.
+There is a [book](https://www.gradegrinder.net/Products/lrds-index.html) for it,
+but no online tool yet that I can explore and reverse-engineer. 😏
+
+For example, your proof can have regular premises like `Small(a) → Green(a)`,
+but it can also have pictorial info that, for example, shows that
+a block is behind another, or a block has a certain shape, etc.
+
+This is a very clever way to extend Tarski's world and solve a common educational problem:
+proofs are always taught way too syntactically and as "meaningless symbol pushing".
+I would love to do this! They said that Hyperproof will eventually get a web release.
+I just have to wait a few more years... 😆 Hey, I got time!
 
 ## Work in progress
 
