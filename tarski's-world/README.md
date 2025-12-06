@@ -83,6 +83,7 @@ Enjoy my silly design adventures and mistakes below!
     - [Releasing artifacts to Maven with Scala-cli](#releasing-artifacts-to-maven-with-scala-cli)
     - [Automating releases with Github Actions](#automating-releases-with-github-actions)
   - [Companion repository](#companion-repository)
+    - [Dogfooding is great](#dogfooding-is-great)
   - [What's next](#whats-next)
   - [Work in progress](#work-in-progress)
 
@@ -2089,6 +2090,25 @@ I started writing some exercises on a
 
 This repository is a *user* of the library; students are meant to clone it to their own
 machines and run it in VS Code or IntelliJ to work through the exercises.
+
+### Dogfooding is great
+
+This made me become a user of my own library, i.e. it made me
+[eat my own dog food](https://en.wikipedia.org/wiki/Eating_your_own_dog_food).
+Because I have to import my own library, so it *has* to be available on Maven:
+
+```scala
+//> using dep io.github.spamegg1::tarski:0.1.1
+```
+
+Of course I could use my locally published version, but I wanted to get a feel for
+the end-user experience to see if everything would work on someone else's machine.
+
+And boy, was it a good idea! Within just 3 examples, I discovered a few bugs already:
+
+![bugs-dogfood](bugs-dogfood.png)
+
+One of these bugs was severe; the implementation of the `Between` predicate was all wrong.
 
 ## What's next
 
