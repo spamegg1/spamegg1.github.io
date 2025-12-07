@@ -1,10 +1,8 @@
 # Tarski's World
 
-Working prototype, with some features missing:
-
 {% include video.html id="tarski.mp4" %}
 
-(Last updated December 05, 2025)
+(Last updated December 07, 2025)
 
 Enjoy my silly design adventures and mistakes below!
 
