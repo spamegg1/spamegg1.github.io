@@ -84,6 +84,7 @@ Enjoy my silly design adventures and mistakes below!
     - [Automating releases with Github Actions](#automating-releases-with-github-actions)
   - [Companion repository](#companion-repository)
     - [Dogfooding is great](#dogfooding-is-great)
+  - [Basic syntax coloring](#basic-syntax-coloring)
   - [What's next](#whats-next)
   - [Work in progress](#work-in-progress)
 
@@ -2109,6 +2110,35 @@ And boy, was it a good idea! Within just 3 examples, I discovered a few bugs alr
 ![bugs-dogfood](bugs-dogfood.png)
 
 One of these bugs was severe; the implementation of the `Between` predicate was all wrong.
+
+## Basic syntax coloring
+
+I decided to add a little bit of color to the logical connectives:
+
+![syntax-coloring](syntax-coloring.png)
+
+It was fairly easy to implement, just add some logic to `Imager`:
+
+```scala
+def colorText(formula: String)(using c: Constants): Image = formula
+  .foldLeft(Image.empty): (img, char) =>
+    img.beside:
+      Text(char.toString)
+        .font(c.TheFont)
+        .strokeColor(char.toColor)
+
+extension (c: Char)
+  def toColor: Color = c match
+    case '¬' => red
+    case '∧' => blue
+    case '∨' => green
+    case '→' => brown
+    case '↔' => brown
+    case _   => black
+```
+
+Going character by character then stitching all the images is not the best way,
+but it gets the job done! 😄
 
 ## What's next
 
