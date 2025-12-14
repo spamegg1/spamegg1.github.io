@@ -55,6 +55,8 @@ Enjoy my silly design adventures and mistakes below!
       - [Second attempt: the `Controls` class](#second-attempt-the-controls-class)
       - [Problems that arise by moving it from Model to View](#problems-that-arise-by-moving-it-from-model-to-view)
       - [Should `Controls` state be in... the Controller?](#should-controls-state-be-in-the-controller)
+    - [Rotating the board](#rotating-the-board)
+      - [Rotator class (has to go into Controller)](#rotator-class-has-to-go-into-controller)
   - [Adding package boundaries to find dependency problems](#adding-package-boundaries-to-find-dependency-problems)
     - [Dependency tree](#dependency-tree)
     - [Package declarations](#package-declarations)
@@ -1399,6 +1401,44 @@ Or, return an `(Image, View)` pair... 🤮
 
 Another idea is to keep the `Controls` state in the Controller...
 These decisions are hard! I'll keep things in Model for now, and let's see what happens.
+
+### Rotating the board
+
+The original Tarski's world has a feature that rotates the board 90 degrees.
+The companion book also has exercises that use this feature.
+
+Now, normally this would be "a different view", right?
+Data remains the same, and it's just displayed differently.
+However... in this case it actually changes the semantics of the world,
+because the positions of the objects change!
+Therefore, any positional predicate like "a is above b" has to be re-evaluated.
+So... *View or Model? It's philosophical!* strikes once again.
+
+We have to update the board (Model, World) then render it.
+
+#### Rotator class (has to go into Controller)
+
+We need to calculate the 90 degree rotated positions.
+Even though the board will always be 8x8, I still wanted to make it size agnostic.
+Rows and columns are swapped, and one of them is "negated".
+
+```scala
+case class Rotator(gs: GridSize):
+  def rotateLeft(pos: Pos): Pos = (row = gs.cols - pos.col - 1, col = pos.row)
+  def rotateRight(pos: Pos): Pos = (row = pos.col, col = gs.rows - pos.row - 1)
+  def rotate(dir: String): Pos => Pos = dir match
+    case "Left" => rotateLeft
+    case "Rgt"  => rotateRight
+
+object Rotator:
+  def board = Rotator(BoardSize) // Rotator instance for the 8x8 board
+```
+
+Also had to update View with some new buttons:
+
+![rotate](rotate.png)
+
+You can see it in action in the video at the top of the page.
 
 ## Adding package boundaries to find dependency problems
 
