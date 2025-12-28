@@ -2,7 +2,7 @@
 
 {% include video.html id="tarski.mp4" %}
 
-(Last updated December 07, 2025)
+(Last updated December 28, 2025)
 
 Enjoy my silly design adventures and mistakes below!
 
@@ -85,6 +85,11 @@ Enjoy my silly design adventures and mistakes below!
     - [Automating releases with Github Actions](#automating-releases-with-github-actions)
   - [Companion repository](#companion-repository)
     - [Dogfooding is great](#dogfooding-is-great)
+  - [The game](#the-game)
+    - [Reorganization](#reorganization)
+    - [Game model](#game-model)
+    - [Game handler](#game-handler)
+    - [Game renderer](#game-renderer)
   - [What's next](#whats-next)
   - [Work in progress](#work-in-progress)
 
@@ -2177,6 +2182,36 @@ And boy, was it a good idea! Within just 3 examples, I discovered a few bugs alr
 ![bugs-dogfood](bugs-dogfood.png)
 
 One of these bugs was severe; the implementation of the `Between` predicate was all wrong.
+
+## The game
+
+The original Tarski's world also has a "game mode" between two players,
+the user and the computer, who try to disprove each other's claims.
+
+![game](game.png)
+
+Implementing this turned out to be a massive challenge!
+
+### Reorganization
+
+I made a new branch `game` to keep `main` unaffected.
+I started to reorganize things into folders, just to have nice looking Material icons 😄
+
+![pretty-folders](prettyFolders.png)
+
+TODO
+
+### Game model
+
+TODO
+
+### Game handler
+
+TODO
+
+### Game renderer
+
+TODO
 
 ## What's next
 
