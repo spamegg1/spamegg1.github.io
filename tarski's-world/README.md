@@ -88,8 +88,8 @@ Enjoy my silly design adventures and mistakes below!
   - [The game](#the-game)
     - [Reorganization](#reorganization)
     - [Game model](#game-model)
-    - [Game handler](#game-handler)
-    - [Game renderer](#game-renderer)
+    - [Game controller: handler](#game-controller-handler)
+    - [Game view: renderer](#game-view-renderer)
       - [Factoring out Board rendering](#factoring-out-board-rendering)
   - [What's next](#whats-next)
   - [Work in progress](#work-in-progress)
@@ -2204,15 +2204,87 @@ TODO
 
 ### Game model
 
+I went through many iterations here, unable to decide on it as code progressed and
+more problems became apparent.
+
+Overall, there are these components:
+
+- current state of gameplay:
+  - the user's commitment,
+  - current, active formula whose truth is being argued,
+  - potential choices between two formulas (for false `and` and true `or`),
+  - potential choice of a block as a witness (for false `forall` and true `exists`),
+- the messages that are displayed to the user at each stage,
+- the board,
+  - the selected position on the board,
+- previous states of the game play, to be able to rewind the game or change commitment.
+
+The main trouble was to decide on how to advance from one state to the next:
+
+- when the user has to choose a formula or a block, we have to go into a "waiting state",
+- when the AI has to choose a formula or a block, Interpreter has to be used,
+- when the state advances to the next, new messages about the next state
+  have to be calculated in advance, i.e. "looking into the future",
+  then displayed at the next step.
+
+All of these parts are tangled up, and it's difficult to see how,
+to what degree, or even *if*, they can be decoupled from each other.
+
+There was also the concern of module dependencies. What parts go into Model?
+When Interpreter has to be used, we have to depend on Controller.
+But Model cannot depend on Controller... how to organize this?
+
+I decided to keep the state of play separate,
+then add the board and the selected position later.
+After a lot of coding, deleting, re-coding, eventually I settled on the following:
+
+```scala
+case class Play(
+    formula: FOLFormula,
+    commitment: Option[Boolean] = None,
+    left: Option[FOLFormula] = None,
+    right: Option[FOLFormula] = None
+)
+
+type Message = String
+type Messages = List[Message]
+type Step = (play: Play, msgs: Messages)
+
+enum Select[+T]: // to handle the "waiting state"
+  case Off
+  case Wait
+  case On(t: T)
+
+/** The core Game data structure.
+  *
+  * @param step
+  *   The current play, and its corresponding messages to be displayed to the user.
+  * @param prev
+  *   A list of all the previous steps (pairs of play and messages); the history of the game play.
+  * @param pos
+  *   The state of currently selected position on the board.
+  * @param board
+  *   The board that holds the blocks for the game.
+  */
+case class Game(step: Step, board: Board, prev: List[Step] = Nil, pos: Select[Pos] = Off)
+```
+
+### Game controller: handler
+
+This is by far the hardest part! 😠
+
 TODO
 
-### Game handler
+### Game view: renderer
+
+This was fairly easy; lots of copy-paste from the World renderer above.
+Re-use Utility and UI classes to make buttons, indicators, etc.
 
 TODO
 
-### Game renderer
+With all that out of the way, I got an early, somewhat working prototype:
 
-TODO
+![game-prototype](game-prototype.png)
 
 #### Factoring out Board rendering
 
