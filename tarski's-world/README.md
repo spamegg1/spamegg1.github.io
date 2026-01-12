@@ -2,7 +2,7 @@
 
 {% include video.html id="tarski.mp4" %}
 
-(Last updated December 28, 2025)
+(Last updated Jan 12, 2026)
 
 Enjoy my silly design adventures and mistakes below!
 
@@ -90,6 +90,7 @@ Enjoy my silly design adventures and mistakes below!
     - [Game model](#game-model)
     - [Game handler](#game-handler)
     - [Game renderer](#game-renderer)
+      - [Factoring out Board rendering](#factoring-out-board-rendering)
   - [What's next](#whats-next)
   - [Work in progress](#work-in-progress)
 
@@ -2212,6 +2213,79 @@ TODO
 ### Game renderer
 
 TODO
+
+#### Factoring out Board rendering
+
+Tarski's world main application and the Game have a big part in common:
+displaying the board. So, good old OOP and inheritance gives us some nice DRY:
+
+```scala
+/** This trait factours out the common components of [[WorldRenderer]] and [[GameRenderer]].
+  *
+  * @param ui
+  *   An instance of [[UI]]
+  * @param c
+  *   A given instance of [[Constants]]
+  */
+trait BoardRenderer(ui: UI)(using c: Constants):
+  /** Displays the block on the user interface controls.
+    *
+    * @param blockOpt
+    *   An optional Block, normally coming from a [[World]] or a [[Game]].
+    * @return
+    *   An image of the block, or an empty image.
+    */
+  def renderBlock(blockOpt: Option[Block]): Image = Imager(blockOpt).at(ui.blockPt)
+
+  /** Draws a red indicator box around the selected position on the board.
+    *
+    * @param pos
+    *   The position of the selected square on the chess board.
+    * @return
+    *   A red-edged, empty square to fit around the selected square on the chess board.
+    */
+  def selectedPos(pos: Option[Pos]): Image =
+    pos match
+      case None      => Image.empty
+      case Some(pos) =>
+        Image
+          .rectangle(Converter.board.blockWidth, Converter.board.blockHeight)
+          .strokeColor(Color.red)
+          .strokeWidth(c.SmallStroke)
+          .at(Converter.board.toPoint(pos))
+
+  /** Draws all the blocks on the chess board.
+    *
+    * @param grid
+    *   A map of positions and blocks
+    * @return
+    *   An image of the chess board, with blocks at their positions.
+    */
+  def blocksOnBoard(board: Board): Image = board.grid
+    .foldLeft[Image](c.Board):
+      case (image, (pos, (block, name))) =>
+        Imager(block)
+          .at(Converter.board.toPoint(pos))
+          .on(image)
+```
+
+Then both `WorldRenderer` and `GameRenderer` can extend it:
+
+```scala
+case class GameRenderer(gameBtn: GameButtons, ui: UI)(using c: Constants) extends BoardRenderer(ui):
+  // ...
+
+case class WorldRenderer(
+    opBtn: OpButtons,
+    nameBtn: NameButtons,
+    sizeBtn: SizeButtons,
+    colBtn: ColorButtons,
+    shapeBtn: ShapeButtons,
+    ui: UI
+)(using c: Constants)
+    extends BoardRenderer(ui):
+  // ...
+```
 
 ## What's next
 
