@@ -1,5 +1,7 @@
 # Gardening
 
+Last updated 2026-01-25
+
 ## Childhood in ruins
 
 In 2024-25, I rescued my now abandoned childhood home from garbage, debris,
@@ -147,3 +149,7 @@ and overgrown ivy roots. It was in very bad shape:
 - A baby kitty resting in an empty flower pot. So cute!
 
 ![33](33-kitty-pot.jpg)
+
+- It's January 2026. Broccoli plant resisting the cold:
+
+![34](34-broccoli.jpg)
