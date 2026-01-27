@@ -2194,7 +2194,7 @@ the user and the computer, who try to disprove each other's claims.
 Implementing this turned out to be a massive challenge!
 Here's an early rough but working version:
 
-{% include video.html id="tarski.mp4" %}
+{% include video.html id="game.mp4" %}
 
 ### Reorganization
 
