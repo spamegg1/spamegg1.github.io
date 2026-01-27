@@ -58,4 +58,8 @@ Useful byproducts continue:
 
 ***Year 4 (2026):***
 
+- *January 2026:* Finished the Game mode for Tarski:
+
+{% include video.html id="game.mp4" %}
+
 Stay tuned!
