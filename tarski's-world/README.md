@@ -85,6 +85,7 @@ Enjoy my silly design adventures and mistakes below!
     - [Automating releases with Github Actions](#automating-releases-with-github-actions)
   - [Companion repository](#companion-repository)
     - [Dogfooding is great](#dogfooding-is-great)
+    - [More dogfooding: window title](#more-dogfooding-window-title)
   - [The game](#the-game)
     - [Reorganization](#reorganization)
     - [Game model](#game-model)
@@ -2183,6 +2184,111 @@ And boy, was it a good idea! Within just 3 examples, I discovered a few bugs alr
 ![bugs-dogfood](bugs-dogfood.png)
 
 One of these bugs was severe; the implementation of the `Between` predicate was all wrong.
+
+### More dogfooding: window title
+
+Up until now, the window title was always the static `"Tarski's World"`.
+In the example repository, we are evaluating lots of different sentences in many
+different worlds, often named after logicians, like `BooleWorld` or `TuringSentences`.
+I thought it would be useful, from the user's point of view,
+if the window title reflected which sentences were evaluated in what world.
+
+For example, a student will be running code that looks like this:
+
+```scala
+import tarski.main.*, Sizes.*, Shape.*, Tone.*
+
+val MaigretWorld: Grid = Map(
+  // blocks...
+)
+
+val MaigretSentences = Seq(
+  // formulas...
+)
+
+@main
+def runQ05 = runWorld(MaigretWorld, MaigretSentences)
+// I want the window title to say:
+// "Tarski's World: evaluating MaigretSentences in MaigretWorld"
+```
+
+So I had to take the actual identifier names of the `val`s like `MaigretWorld`,
+convert them to strings somehow, and pass them to the title of Reactor's `Frame`. This
+requires [metaprogramming](https://docs.scala-lang.org/scala3/guides/macros/macros.html).
+
+I know nothing about Scala 3 macros, the learning resources are close to non-existent.
+Thankfully there is a wonderful solution that exists, in the form of Derek Wickern's
+[scala-nameof library](https://github.com/dwickern/scala-nameof). Exactly what I need.
+
+In fact, it's hard to even call it a library, it's so sparse. Just two files!
+It can get the name, or qualified name of anything, but also names of types.
+I didn't need all that... I just need identifier names and nothing else.
+
+Naive approach fails. If I do the following:
+
+```scala
+inline def runWorld(inline grid: Grid = Grid.empty, inline formulas: Seq[FOLFormula], scaleFactor: Double = 1.0) =
+  val title = s"evaluating ${nameOf(formulas)} in ${nameOf(grid)}"
+  // ... the rest of my main method
+  Reactor
+    // ...
+    .animateWithFrame(c.MainFrame.withTitle(title))
+```
+
+instead of what we want `"evaluating MaigretSentences in MaigretWorld"`,
+it prints... `"evaluating formulas in grid"` 😠
+
+I reached out on Github, and
+[I got a response within hours](https://github.com/dwickern/scala-nameof/issues/32).
+Thanks so much, Derek!
+
+The actual names have to be captured and inlined at the call site,
+then passed down and forwarded to my main function. I had to do the following:
+
+```scala
+inline def runWorld(inline grid: Grid = Grid.empty, inline formulas: Seq[FOLFormula], scaleFactor: Double = 1.0) =
+  val title = s"${Title.show(formulas)} in ${Title.show(grid)}"
+  runHelper(title, grid, formulas, scaleFactor)
+
+private def runHelper(title: String, grid: Grid, formulas: Seq[FOLFormula], scaleFactor: Double) =
+  // ... do the normal main logic here
+```
+
+As for the `Title.show`, I decided to take the library code and strip it all the way down
+to the barest of what I need. It ended up in View / Utility (did not fit anywhere else).
+This is how we do macros: A `transparent inline` method with some name, say `show`,
+then another method which provides its implementation, has to be named `showImpl`.
+I only need identifiers (bare or inlined), so I removed all the other cases.
+The code went from 100+ lines down to 15-20:
+
+```scala
+package tarski
+package view
+
+object Title:
+  import scala.quoted.*
+
+  transparent inline def show(inline expr: Any): String =
+    ${ showImpl('expr) }
+
+  private def showImpl(expr: Expr[Any])(using Quotes): Expr[String] =
+    import quotes.reflect.*
+
+    @annotation.tailrec
+    def extract(tree: Tree): String = tree match
+      case Ident(name)         => name
+      case Inlined(_, _, term) => extract(term)
+      case _                   => "?"
+
+    val name = extract(expr.asTerm)
+    Expr(name)
+```
+
+And finally... here it is! 🥹 Look at the top line:
+
+![title](title.png)
+
+![gameTitle](gameTitle.png)
 
 ## The game
 
