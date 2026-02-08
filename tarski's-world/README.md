@@ -2,7 +2,7 @@
 
 {% include video.html id="tarski.mp4" %}
 
-(Last updated Jan 12, 2026)
+(Last updated Feb 8, 2026)
 
 Enjoy my silly design adventures and mistakes below!
 
