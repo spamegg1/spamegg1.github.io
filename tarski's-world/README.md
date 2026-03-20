@@ -2,7 +2,7 @@
 
 {% include video.html id="tarski.mp4" %}
 
-(Last updated Feb 8, 2026)
+(Last updated Mar 20, 2026)
 
 Enjoy my silly design adventures and mistakes below!
 
@@ -90,6 +90,7 @@ Enjoy my silly design adventures and mistakes below!
     - [Reorganization](#reorganization)
     - [Game model](#game-model)
     - [Game controller: handler](#game-controller-handler)
+      - [Increasing type safety: using enums and unions instead of strings](#increasing-type-safety-using-enums-and-unions-instead-of-strings)
     - [Game view: renderer](#game-view-renderer)
       - [Factoring out Board rendering](#factoring-out-board-rendering)
   - [What's next](#whats-next)
@@ -2138,7 +2139,7 @@ This requires TWO workflow files; in my regular format and check workflow,
 I need to use the opposite of this, and *ignore* any tags that start with `v`.
 Notice there is no GPG importing or publishing here:
 
-```scala
+```yml
 on:
   push:
     branches:
@@ -2157,6 +2158,43 @@ jobs:
     - uses: VirtusLab/scala-cli-setup@v1.10.1
     - run: scala-cli --power format --check && scala-cli --power test .
 ```
+
+I added a yet THIRD workflow file to automate the Github releases.
+It triggers on the same logic (pushing new tags) but now I don't have to
+manually create a release by clicking "Create release" on a tag on Github.
+Notice this is different than Maven releases; there are no artifacts or `.jar`s.
+Just the source code in a nice zip file 😃
+This requires [action-gh-release](https://github.com/softprops/action-gh-release):
+
+```yml
+name: Release on Github
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Git repository
+        uses: actions/checkout@v6.0.0
+      - name: Release
+        uses: softprops/action-gh-release@v2.5.0
+        with:
+          make_latest: true
+          generate_release_notes: true
+          preserve_order: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+Now this is automatic:
+
+![github-release-automated](github-release-automated.png)
 
 ## Companion repository
 
@@ -2382,7 +2420,138 @@ case class Game(step: Step, board: Board, prev: List[Step] = Nil, pos: Select[Po
 
 This is by far the hardest part! 😠
 
-TODO
+#### Increasing type safety: using enums and unions instead of strings
+
+There are many button clicks in the game and in the world app.
+But these button clicks fall into some categories, and
+they are handed down to more specific handlers on a case by case basis
+(clicking the board positions is handled separately).
+
+Initially I tried to group everything under one big `enum`.
+
+For the world, we have 6 letters, 3 colors, 3 shapes, 3 sizes, 2 rotations,
+4 actions (eval, move, add, delete) and the block display:
+
+```scala
+enum Click:
+  case A, B, C, D, E, F, Blu, Lim, Red, Sqr, Tri, Cir, Sml, Mid, Big,
+    Left, Right, Eval, Add, Del, Move, Icon
+```
+
+So we would have separate handlers:
+
+```scala
+def uiButtons(pos: Pos, world: World): World =
+  Converter.uiMap.get(pos) match
+    case None        => world
+    case Some(click) => // make sure a button is clicked
+      click match
+        case A | B | C | D | E | F                               => handleName(click, world)
+        case Blu | Lim | Red | Sqr | Tri | Cir | Sml | Mid | Big => handleAttr(attr, world)
+        case Left | Right                                        => handleRotate(r, world)
+        case Eval | Move | Add | Del                             => handleAction(a, world)
+        case Icon                                                => world
+```
+
+and for the game we have 2 choices, 2 commitments,
+2 actions (Back, OK) and the block display:
+
+```scala
+enum GameClick:
+  case Left, Right, True, False, Back, OK, Display
+```
+
+with a similar idea for separate handlers for the sub-groups.
+
+But this approach leads to non-exhaustivity, because the separate handlers
+still have to accept the main enum type as their input type:
+
+![nonexhaustive1](nonexhaustive1.png)
+
+![nonexhaustive2](nonexhaustive2.png)
+
+![nonexhaustive3](nonexhaustive3.png)
+
+Instead, I decided to create multiple enums for the subgroups
+and join them together at the higher level with a union type.
+
+For the world:
+
+```scala
+/** Union type that represents all the button clicks on the user interface controls. */
+type Click = Letter | Attr | Rotation | Action
+
+enum Letter:
+  case A, B, C, D, E, F
+
+/** This subgroup itself is a union type of 3 enums. */
+type Attr = Sizes | Shape | Tone
+
+enum Sizes:
+  case Sml, Mid, Big
+
+enum Shape:
+  case Sqr, Tri, Cir
+
+enum Tone:
+  case Blu, Lim, Red
+
+enum Rotation:
+  case Left, Right
+
+enum Action:
+  case Eval, Move, Add, Del, Icon
+```
+
+For the game:
+
+```scala
+/** Union type for all the possible types of button clicks in the game. */
+type GameClick = Commit | Choice | GameAction
+
+enum Commit:
+  case True, False
+
+enum Choice:
+  case Left, Right
+
+enum GameAction:
+  case Back, OK, Display
+```
+
+This way we get exhaustivity for all parts of the union type, and for enums themselves.
+And the more specific handlers can now accept as input the more specific subtype
+instead of accepting the big enum/union. We can "split" the union for the game like so:
+
+```scala
+def controls(pos: Pos, game: Game): Game =
+  Converter.gameMap.get(pos) match
+    case None        => game
+    case Some(click) => // make sure a button is clicked
+      click match // enjoys union type exhaustivity
+        case commit: Commit     => handleCommit(commit, game)
+        case choice: Choice     => handleChoice(choice, game)
+        case action: GameAction => handleAction(action, game)
+```
+
+And here's an example from the world of a subgroup specific handler.
+It enjoys the enum's exhaustivity:
+
+```scala
+private def handleAction(action: Action, world: World): World =
+  action match // exhaustive now!
+    case Action.Eval => handleEval(world)
+    case Action.Add  => world.addBlockFromControls
+    case Action.Del  => world.removeSelectedBlock
+    case Action.Move => world.toggleMove
+    case Action.Icon => world
+```
+
+This problem can be solved by better support for GADTs (generalized algebraic data types).
+There is a SIP (Scala Improvement Proposal) for
+[multi-level enums](https://github.com/scala/improvement-proposals/pull/117)
+but it is not being implemented yet, so we'll have to wait... 😠
+In the meantime, union types are cool! We get all the exhaustivity at all levels.
 
 ### Game view: renderer
 
