@@ -1185,6 +1185,9 @@ def handleControls(pos: Pos, world: World): World = gridControl.get(pos) match
       case "Tri" | "Squ" | "Cir"             => handleShape(value, world)
 ```
 
+There are issues here, such as non-exhaustive pattern matching not checked by the compiler
+and using plain strings for the cases. We will revisit this later.
+
 #### Wrapping and forwarding
 
 A lot of this handling involves updating the `Controls` instance inside `World`.
@@ -2426,6 +2429,16 @@ There are many button clicks in the game and in the world app.
 But these button clicks fall into some categories, and
 they are handed down to more specific handlers on a case by case basis
 (clicking the board positions is handled separately).
+
+So far I was using bare strings for these.
+You can see it above in [handling controls](#handling-controls).
+Very unsafe! We can't have that. We need to use types, not strings!
+We are not barbarians for god's sake! It's the 21st century! 🤣
+
+Joke aside, I actually had a bug because I misspelled one of those strings!
+I spent some time looking for the bug, because either there was a match error,
+or worse: it was passing *SILENTLY*. [Zen of Python](https://peps.python.org/pep-0020/)
+tells us that errors should never pass silently! Very wise indeed 👴
 
 Initially I tried to group everything under one big `enum`.
 
