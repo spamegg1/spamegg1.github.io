@@ -1,6 +1,6 @@
 # Gardening
 
-Last updated 2026-01-25
+Last updated 2026-04-27
 
 ## Childhood in ruins
 
@@ -153,3 +153,10 @@ and overgrown ivy roots. It was in very bad shape:
 - It's January 2026. Broccoli plant resisting the cold:
 
 ![34](34-broccoli.jpg)
+
+- April 2026: we got the incredibly advanced technology of terraces.
+  Pictured are some potatoes and onions (being protected from slugs):
+
+![35](35-terraces-1.jpg)
+
+![36](36-terraces-2.jpg)
