@@ -2,7 +2,7 @@
 
 {% include video.html id="tarski.mp4" %}
 
-(Last updated Mar 20, 2026)
+(Last updated May 26, 2026)
 
 Enjoy my silly design adventures and mistakes below!
 
@@ -1203,6 +1203,10 @@ We have to "penetrate" through many wrappers and forward the logic:
 - then update (copy) `World` with the new controls
 
 This must be a very common problem, I wonder if there is a good solution?
+
+Apparently [there is](https://github.com/softwaremill/quicklens).
+It's inspired by Haskell's "mutate the immutable data" lens idea.
+Wow, I now totally get the meaning of "lens". Because of the nesting 😄
 
 ## View
 
