@@ -63,7 +63,8 @@ Useful byproducts continue:
 {% include video.html id="game.mp4" %}
 
 - *April 2026:* Finished with Tarski and the companion repository for now.
-  All done! 1.0 released. Turning my attention to
-  [abstract thinking](https://github.com/spamegg1/abstract-thinking).
+  All done! 1.0 released.
+
+- *June 2026*: starting to work on a parallel programming intro course (CPU + GPU).
 
 Stay tuned!
